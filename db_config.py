@@ -11,7 +11,7 @@ def get_engine():
     
     # Create the connection URL
     connection_url = URL.create(
-        "mysql+mysqlclient",
+        "mysql+pymysql",
         username=db_credentials['username'],
         password=db_credentials['password'],
         host=db_credentials['host'],
