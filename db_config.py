@@ -11,7 +11,7 @@ def get_engine():
     
     # Create the connection URL
     connection_url = URL.create(
-        drivername=f"{db_creds['db_type']}+{db_creds['driver']}",
+        drivername=f"{db_creds['db_type']}+pymysql",
         username=db_creds['username'],
         password=db_creds['password'],
         host=db_creds['host'],

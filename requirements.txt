@@ -1,5 +1,5 @@
 streamlit
 sqlalchemy
-mysqlclient
+PyMySQL
 pandas
 plotly
