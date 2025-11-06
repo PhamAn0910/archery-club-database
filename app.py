@@ -26,7 +26,7 @@ SessionLocal, db_error = init_db()
 st.title("🏹 Archery Score Recording")
 
 # Check if database connection failed
-if db_error:
+if db_error or SessionLocal is None:
     st.error("⚠️ Database Connection Failed")
     st.warning(f"**Error:** {db_error}")
     st.info("""
@@ -42,6 +42,7 @@ if db_error:
     """)
     st.stop()  # Stop execution here
 
+# At this point, SessionLocal is guaranteed to be valid
 st.header("All Archers")
 
 # --- Read and Display Archers ---
