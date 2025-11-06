@@ -9,14 +9,38 @@ import datetime
 @st.cache_resource
 def init_db():
     """Initialize database engine and create tables (runs once per session)."""
-    engine = get_engine()
-    Base.metadata.create_all(engine)  # Ensure tables exist
-    return sessionmaker(bind=engine)
+    try:
+        engine = get_engine()
+        # Test the connection before creating tables
+        with engine.connect() as conn:
+            pass  # Just test if connection works
+        Base.metadata.create_all(engine)  # Ensure tables exist
+        return sessionmaker(bind=engine), None
+    except Exception as e:
+        # Return None for SessionLocal and the error message
+        return None, str(e)
 
-SessionLocal = init_db() 
+SessionLocal, db_error = init_db() 
 
 # --- App ---
 st.title("🏹 Archery Score Recording")
+
+# Check if database connection failed
+if db_error:
+    st.error("⚠️ Database Connection Failed")
+    st.warning(f"**Error:** {db_error}")
+    st.info("""
+    **Possible reasons:**
+    - You're using `localhost` which only works on your local machine
+    - For Streamlit Cloud deployment, you need a cloud-hosted database
+    - Check your secrets configuration in Streamlit Cloud dashboard
+    
+    **To fix this:**
+    1. Set up a cloud-hosted MySQL database
+    2. Update your secrets in Streamlit Cloud (Settings → Secrets)
+    3. Use the cloud database host instead of 'localhost'
+    """)
+    st.stop()  # Stop execution here
 
 st.header("All Archers")
 
