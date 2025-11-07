@@ -1,132 +1,153 @@
-import streamlit as st
-import pandas as pd
 
-# --- Page Configuration ---
-# Set the title, icon, and layout for your app
+
+# --- Imports ---
+import streamlit as st
+from sqlalchemy import text
+from db_config import get_engine
+import random
+import string
+
+# --- Utility Functions ---
+def generate_unique_av_number(conn, prefix="VIC", length=3):
+    while True:
+        suffix = ''.join(random.choices(string.digits, k=length))
+        av_number = f"{prefix}{suffix}"
+        result = conn.execute(text("SELECT 1 FROM club_member WHERE av_number = :av_number"), {"av_number": av_number}).fetchone()
+        if not result:
+            return av_number
+
+def get_member_info(member_id):
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Fetch member info including av_number
+            query = text("""
+                SELECT id, full_name, is_recorder, av_number
+                FROM club_member
+                WHERE id = :member_id
+            """)
+            result = conn.execute(query, {"member_id": member_id}).fetchone()
+            if result:
+                av_number = result.av_number
+                # If av_number is missing, generate and update it
+                if not av_number:
+                    av_number = generate_unique_av_number(conn)
+                    update_query = text("UPDATE club_member SET av_number = :av_number WHERE id = :id")
+                    conn.execute(update_query, {"av_number": av_number, "id": result.id})
+                    conn.commit()
+                return {
+                    "id": result.id,
+                    "full_name": result.full_name,
+                    "is_recorder": bool(result.is_recorder),
+                    "av_number": av_number
+                }
+            return None
+    except Exception as e:
+        st.error(f"Database error during login: {e}")
+        return None
+
+def get_logged_in_av_number():
+    """Return the AV number for the currently logged-in user, or None if not logged in."""
+    if not st.session_state.get("logged_in", False):
+        return None
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            query = text("SELECT av_number FROM club_member WHERE id = :id")
+            result = conn.execute(query, {"id": st.session_state.archer_id}).fetchone()
+            if result:
+                return result.av_number
+    except Exception as e:
+        st.warning(f"Could not fetch AV number: {e}")
+    return None
+
+# --- Streamlit Page Config ---
 st.set_page_config(
     page_title="Archery Score Hub",
     page_icon="🎯",
     layout="wide"
 )
 
-# --- Database Connection ---
-# Uses Streamlit's built-in connection management.
-# .streamlit/secrets.toml file in your app's root
-# directory with your MySQL credentials.
-@st.cache_resource
-def get_db_connection():
-    """Establishes a cached connection to the MySQL database."""
-    try:
-        conn = st.connection("mysql", type="sql")
-        return conn
-    except Exception as e:
-        st.error(f"Error connecting to database: {e}")
-        return None
 
-# --- Session State Initialization ---
-# This dictionary will hold our mock archer data for the simulation.
-# In a real app, you'd query this from the `archer` table.
-# NOTE: The `archer` table in your SQL file needs a `name` column to match
-# [cite_start]your Figma design and project requirements[cite: 655].
-MOCK_ARCHERS = {
-    1: "Hoang Dung Nguyen",
-    2: "Ngoc Quynh Trang Le",
-    3: "Truong Que An Pham"
-}
+# --- Page Functions ---
+def login_page():
+    st.title("🎯 Archery Score Hub Login")
+    st.write("Enter your 6-digit club Member ID to log in.")
+    login_id_str = st.text_input("Member ID", placeholder="e.g., 123456", max_chars=6)
+    if st.button("Log In", type="primary"):
+        try:
+            login_id = int(login_id_str)
+            member = get_member_info(login_id)
+            if member:
+                st.session_state.archer_id = member["id"]
+                st.session_state.archer_name = member["full_name"]
+                st.session_state.is_recorder = member["is_recorder"]
+                st.session_state.logged_in = True
+                st.session_state.view_mode = "Archer"
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Member ID not found.")
+        except ValueError:
+            st.error("Please enter a valid 6-digit numeric ID.")
 
-# Initialize session state variables if they don't exist
-if 'archer_id' not in st.session_state:
-    st.session_state.archer_id = 1 # Default to first archer
-if 'archer_name' not in st.session_state:
-    st.session_state.archer_name = MOCK_ARCHERS[1]
-if 'is_recorder' not in st.session_state:
-    st.session_state.is_recorder = False
 
-# --- Sidebar Login Simulation ---
-# This section simulates the login and role-switching from your Figma design.
-st.sidebar.header("User Simulation")
-selected_archer_id = st.sidebar.selectbox(
-    "Log in as:",
-    options=MOCK_ARCHERS.keys(),
-    format_func=lambda id: MOCK_ARCHERS[id],
-    key='login_select'
-)
+def round_definitions_page():
+    st.header("📖 Round Definitions (Home)")
+    st.write("This is the home page for all users. Display round definitions here.")
 
-# Update session state when the user changes
-st.session_state.archer_id = selected_archer_id
-st.session_state.archer_name = MOCK_ARCHERS[selected_archer_id]
+def score_entry_page():
+    st.header("🎯 Score Entry")
+    st.write("This page is for archers to enter their scores.")
 
-# The "Switch to Recorder" toggle
-st.session_state.is_recorder = st.sidebar.toggle(
-    "Act as Recorder",
-    value=st.session_state.is_recorder,
-    key='recorder_toggle'
-)
-st.sidebar.divider()
+def score_history_page():
+    st.header("📊 Score History")
+    st.write("This page shows the archer's score history.")
 
-# --- Navigation Definition ---
-# We will import and add our page modules here one by one.
-# For now, create empty lists.
+def pbs_records_page():
+    st.header("🏆 PBs & Records")
+    st.write("This page displays personal bests and records for the archer.")
 
-# 1. Import view modules (we will uncomment these as we go)
-# from views import (
-#     score_entry, 
-#     score_history, 
-#     pbs_records, 
-#     competition_results, 
-#     championship_ladder, 
-#     round_definitions, 
-#     admin_approval, 
-#     admin_management
-# )
+def competition_results_page():
+    st.header("🏁 Competition Results")
+    st.write("This page shows competition results for the archer.")
 
-# 2. Define the pages
-archer_pages = [
-    # Page(score_entry.show, title="Score Entry", icon="🎯"),
-    # Page(score_history.show, title="My Score History", icon="📊"),
-    # Page(pbs_records.show, title="PBs & Records", icon="🏆"),
-    # Page(competition_results.show, title="Competition Results", icon="🏁"),
-    # Page(championship_ladder.show, title="Championship Ladder", icon="🥇"),
-    # Page(round_definitions.show, title="Round Definitions", icon="📖"),
-]
+def championship_ladder_page():
+    st.header("🥇 Championship Ladder")
+    st.write("This page displays the championship ladder for archers.")
 
-admin_pages = [
-    # Page(admin_approval.show, title="Score Approval", icon="🔒"),
-    # Page(admin_management.show, title="Admin Management", icon="⚙️"),
-]
+def recorder_approval_page():
+    if not st.session_state.get("logged_in", False) or not st.session_state.get("is_recorder", False):
+        st.info("You must be logged in as a recorder to view this page.")
+        return
+    st.header("🔒 Recorder Approval")
+    st.write("This page is for recorders to approve scores.")
 
-# 3. Build the final navigation list
-nav_pages = archer_pages[:]  # Start with a copy of archer pages
+def recorder_management_page():
+    if not st.session_state.get("logged_in", False) or not st.session_state.get("is_recorder", False):
+        st.info("You must be logged in as a recorder to view this page.")
+        return
+    st.header("⚙️ Recorder Management")
+    st.write("This page is for recorders to manage club data and users.")
 
-if st.session_state.is_recorder:
-    nav_pages.extend(admin_pages)  # Add admin pages if user is recorder
+# --- Main App Routing ---
+def main():
+    st.title("🏹 Archery Club Score System")
+    PAGES = {
+        "Home": round_definitions_page,
+        "Login": login_page,
+        "Score Entry": score_entry_page,
+        "Score History": score_history_page,
+        "PBs & Records": pbs_records_page,
+        "Competition Results": competition_results_page,
+        "Championship Ladder": championship_ladder_page,
+        "Recorder Approval": recorder_approval_page,
+        "Recorder Management": recorder_management_page,
+    }
+    menu = list(PAGES.keys())
+    choice = st.sidebar.selectbox("Navigation", menu)
+    # Call the selected page function
+    PAGES[choice]()
 
-# 4. Run the navigation or show the welcome page
-if nav_pages:
-    # If we have pages, run the navigation
-    pg = st.navigation(nav_pages)
-    
-    # --- Shared Header ---
-    st.header(f"Welcome, {st.session_state.archer_name}!")
-    
-    # Show role-specific info
-    is_admin_page = pg.title in ["Score Approval", "Admin Management"]
-    if st.session_state.is_recorder and is_admin_page:
-        st.info("You are in **Recorder Mode**.", icon="🔒")
-    else:
-        st.info("You are in **Archer Mode**.", icon="🏹")
-    
-    # --- Run the selected page's content ---
-    pg.run()
-    
-else:
-    # --- Default Welcome Page (if no views are loaded) ---
-    st.header(f"Welcome, {st.session_state.archer_name}!")
-    if st.session_state.is_recorder:
-        st.info("You are currently in **Recorder Mode**.", icon="🔒")
-    else:
-        st.info("You are in **Archer Mode**.", icon="🏹")
-
-    st.subheader("Welcome to the Archery Score Hub")
-    st.markdown("We are building the app. The pages will appear in the sidebar as we create them.")
-    st.image("https://i.imgur.com/gY974rU.png", caption="Figma Design Preview", width=600)
+if __name__ == "__main__":
+    main()

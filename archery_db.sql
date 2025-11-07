@@ -6,15 +6,19 @@
 -- -----------------------------------------------------
 
 -- -----------------------------------------------------
+-- 0. Create / Select archery_db schema
+-- -----------------------------------------------------
+DROP SCHEMA IF EXISTS archery_db;
+CREATE SCHEMA archery_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci ;
+USE archery_db;
+
+-- -----------------------------------------------------
 -- 1. Table: gender
 -- Stores the gender options (M/F).
 -- -----------------------------------------------------
 CREATE TABLE gender (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    gender_code ENUM('M', 'F') NOT NULL,
-
-    UNIQUE KEY uk_gender_code (gender_code),
-    CONSTRAINT chk_gender_code CHECK (gender_code IN ('M', 'F'))
+    gender_code ENUM('M', 'F') NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
 -- -----------------------------------------------------
@@ -23,10 +27,8 @@ CREATE TABLE gender (
 -- -----------------------------------------------------
 CREATE TABLE division (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    bow_type_code ENUM('R', 'C', 'RB', 'CB', 'L') NOT NULL COMMENT 'R: Recurve, C: Compound, RB: Recurve Barebow, CB: Compound Barebow, L: Longbow',
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-    UNIQUE KEY uk_bow_type_code (bow_type_code)
+    bow_type_code ENUM('R', 'C', 'RB', 'CB', 'L') NOT NULL UNIQUE COMMENT 'R: Recurve, C: Compound, RB: Recurve Barebow, CB: Compound Barebow, L: Longbow',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
 -- -----------------------------------------------------
@@ -39,7 +41,7 @@ CREATE TABLE age_class (
     min_birth_year YEAR NOT NULL,
     max_birth_year YEAR NOT NULL,
     policy_year YEAR NOT NULL COMMENT 'The year this age rule is valid for.',
-
+    
     UNIQUE KEY uk_age_class_policy (age_class_code, policy_year)
 ) ENGINE=InnoDB;
 
@@ -49,9 +51,7 @@ CREATE TABLE age_class (
 -- -----------------------------------------------------
 CREATE TABLE round (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    round_name VARCHAR(64) NOT NULL,
-
-    UNIQUE KEY uk_round_name (round_name)
+    round_name VARCHAR(64) NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
 -- -----------------------------------------------------
@@ -96,47 +96,28 @@ CREATE TABLE category (
 ) ENGINE=InnoDB;
 
 -- -----------------------------------------------------
--- 7a. Table: archer
--- Stores the archer's details.
+-- 7a. Table: club_member
+-- Stores the archer and recorder details.
 -- -----------------------------------------------------
-CREATE TABLE archer (
+CREATE TABLE club_member (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    av_number VARCHAR(16) NOT NULL UNIQUE,    -- e.g., 'VIC123', generated in application code
+    full_name VARCHAR(100) NOT NULL,
     birth_year YEAR NOT NULL,
-    -- These represent the archer's *default* gender and division
     gender_id INT NOT NULL,
     division_id INT NOT NULL,
+    is_recorder BOOLEAN NOT NULL DEFAULT FALSE, -- role column: TRUE if recorder, FALSE if archer
 
     -- Foreign Key constraints
-    CONSTRAINT fk_archer_gender
+    CONSTRAINT fk_member_gender
         FOREIGN KEY (gender_id) 
         REFERENCES gender(id) 
         ON DELETE RESTRICT,
-    CONSTRAINT fk_archer_division
+    CONSTRAINT fk_member_division
         FOREIGN KEY (division_id) 
         REFERENCES division(id) 
         ON DELETE RESTRICT
-) ENGINE=InnoDB;
-
--- -----------------------------------------------------
--- 7b. Table: archer_info
--- Stores the archer's private personal info.
--- This table is kept separate for security.
--- -----------------------------------------------------
-CREATE TABLE archer_info (
-    id INT PRIMARY KEY COMMENT 'Must be the *same* ID as the archer.id it references.',
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    av_number VARCHAR(20) NULL COMMENT 'Archery Victoria Number',
-
-    -- AV number is unique among Victorian archers for AA tournaments
-    UNIQUE KEY uk_av_number (av_number),
-
-    -- Foreign Key constraint
-    CONSTRAINT fk_archer_info_archer
-        FOREIGN KEY (id) 
-        REFERENCES archer(id) 
-        ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB AUTO_INCREMENT = 100000;
 
 -- -----------------------------------------------------
 -- 8. Table: round_range
@@ -170,18 +151,15 @@ CREATE TABLE round_range (
 -- -----------------------------------------------------
 CREATE TABLE session (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    archer_id INT NOT NULL,
+    member_id INT NOT NULL,
     round_id INT NOT NULL,
     shoot_date DATE NOT NULL,
-    status ENUM('Preliminary', 'Confirmed') NOT NULL DEFAULT 'Preliminary',
-
-    -- Enforce business rule from the ERD
-    CONSTRAINT chk_status CHECK (status IN ('Preliminary', 'Confirmed')),
+    status ENUM('Preliminary', 'Final', 'Confirmed') NOT NULL DEFAULT 'Preliminary',
 
     -- Foreign Key constraints
-    CONSTRAINT fk_session_archer
-        FOREIGN KEY (archer_id) 
-        REFERENCES archer(id) 
+    CONSTRAINT fk_session_member
+        FOREIGN KEY (member_id) 
+        REFERENCES club_member(id) 
         ON DELETE CASCADE,
     CONSTRAINT fk_session_round
         FOREIGN KEY (round_id) 

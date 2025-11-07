@@ -83,18 +83,16 @@ INSERT INTO category (age_class_id, gender_id, division_id) VALUES
  (SELECT id FROM division WHERE bow_type_code = 'L'));
 
 -- -----------------------------------------------------
--- 7. Table: archer
+-- 7. Table: club_member
 -- Creating sample archers that fit some of the categories
 -- -----------------------------------------------------
-INSERT INTO archer (birth_year, gender_id, division_id) VALUES
+INSERT INTO club_member (full_name, birth_year, gender_id, division_id, is_recorder) VALUES
 -- Archer 1: U18 Male Recurve
-(2008, (SELECT id FROM gender WHERE gender_code = 'M'), (SELECT id FROM division WHERE bow_type_code = 'R')), --
-
+('Laura Kofoed', 2008, (SELECT id FROM gender WHERE gender_code = 'M'), (SELECT id FROM division WHERE bow_type_code = 'R'), 1),
 -- Archer 2: 50+ Female Compound
-(1970, (SELECT id FROM gender WHERE gender_code = 'F'), (SELECT id FROM division WHERE bow_type_code = 'C')), --
-
+('Lotta Braun', 1970, (SELECT id FROM gender WHERE gender_code = 'F'), (SELECT id FROM division WHERE bow_type_code = 'C'), 0),
 -- Archer 3: Open Male Longbow
-(1990, (SELECT id FROM gender WHERE gender_code = 'M'), (SELECT id FROM division WHERE bow_type_code = 'L')); --
+('Jessica Kerr', 1990, (SELECT id FROM gender WHERE gender_code = 'M'), (SELECT id FROM division WHERE bow_type_code = 'L'), 0);
 
 -- -----------------------------------------------------
 -- 8. Table: round_range
@@ -127,7 +125,7 @@ INSERT INTO round_range (round_id, distance_m, face_size, ends_per_range) VALUES
 -- 9. Table: session
 -- Simulating scoresheets for our archers
 -- -----------------------------------------------------
-INSERT INTO session (archer_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
 -- Archer 1 shoots the 'October WA 60/900' competition
 (1, (SELECT id FROM round WHERE round_name = 'WA60/900'), '2025-10-10', 'Confirmed'),
 
