@@ -27,7 +27,7 @@ CREATE TABLE gender (
 -- -----------------------------------------------------
 CREATE TABLE division (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    bow_type_code ENUM('R', 'C', 'RB', 'CB', 'L') NOT NULL UNIQUE COMMENT 'R: Recurve, C: Compound, RB: Recurve Barebow, CB: Compound Barebow, L: Longbow',
+    bow_type_code ENUM('R', 'C', 'RB', 'CB', 'L', '') NOT NULL UNIQUE COMMENT 'R: Recurve, C: Compound, RB: Recurve Barebow, CB: Compound Barebow, L: Longbow',
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
@@ -101,12 +101,14 @@ CREATE TABLE category (
 -- -----------------------------------------------------
 CREATE TABLE club_member (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    av_number VARCHAR(16) NOT NULL UNIQUE,    -- e.g., 'VIC123', generated in application code
+    av_number VARCHAR(16) UNIQUE,    -- e.g., 'VIC123', generated at database level (see below)
     full_name VARCHAR(100) NOT NULL,
     birth_year YEAR NOT NULL,
     gender_id INT NOT NULL,
     division_id INT NOT NULL,
     is_recorder BOOLEAN NOT NULL DEFAULT FALSE, -- role column: TRUE if recorder, FALSE if archer
+
+    UNIQUE KEY uk_member_identity (full_name, birth_year, gender_id, division_id),
 
     -- Foreign Key constraints
     CONSTRAINT fk_member_gender
@@ -118,6 +120,40 @@ CREATE TABLE club_member (
         REFERENCES division(id) 
         ON DELETE RESTRICT
 ) ENGINE=InnoDB AUTO_INCREMENT = 100000;
+
+-- -----------------------------------------------------
+-- Function: generate_unique_av_number
+-- Modular function to generate a unique AV number for club_member
+-- -----------------------------------------------------
+DELIMITER $$
+CREATE FUNCTION generate_unique_av_number()
+RETURNS VARCHAR(16)
+DETERMINISTIC
+BEGIN
+    DECLARE new_av VARCHAR(16);
+    DECLARE exists_count INT DEFAULT 1;
+    WHILE exists_count > 0 DO
+        SET new_av = CONCAT('VIC', LPAD(FLOOR(RAND() * 1000), 3, '0'));
+        SELECT COUNT(*) INTO exists_count FROM club_member WHERE av_number = new_av;
+    END WHILE;
+    RETURN new_av;
+END$$
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Trigger: before_insert_club_member
+-- Auto-generates AV number if not provided on insert
+-- -----------------------------------------------------
+DELIMITER $$
+CREATE TRIGGER before_insert_club_member
+BEFORE INSERT ON club_member
+FOR EACH ROW
+BEGIN
+    IF NEW.av_number IS NULL OR NEW.av_number = '' THEN
+        SET NEW.av_number = generate_unique_av_number();
+    END IF;
+END$$
+DELIMITER ;
 
 -- -----------------------------------------------------
 -- 8. Table: round_range

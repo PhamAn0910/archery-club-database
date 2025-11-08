@@ -4,3 +4,4 @@ pymysql
 pandas
 plotly
 cryptography
+pytest
