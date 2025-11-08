@@ -162,8 +162,7 @@ def _render_login_panel(auth: AuthState) -> None:
     _set_auth(AuthState(
         logged_in=True,
         id=profile["id"],
-        # Name is intentionally omitted for privacy; only AV is exposed to the UI.
-        name=None,
+        name=profile["full_name"],
         is_recorder=profile["is_recorder"],
         av=profile["av_number"],
     ))
@@ -188,11 +187,10 @@ def _profile_card_html(auth: AuthState) -> str:
 
         Kept small so unit tests can verify HTML structure independently.
         """
-        # Minimal card to avoid displaying personal names. Show AV only.
-        # Keep the "Logged in as" label for clarity while omitting the name.
         return f"""
 <div class="profile-card">
     <div class="profile-top">Logged in as</div>
+    <div class="profile-name">{auth.name or ''}</div>
     <div class="profile-av">{auth.av or ''}</div>
 </div>
 """
@@ -221,8 +219,13 @@ def _render_section(section_name: str, links: list[tuple[str, str]]) -> None:
     spacing) so `_render_nav` remains concise and the code is easier to
     modify.
     """
-    if section_name == "Recorder":
-        st.markdown('<div class="section-small">Recorder</div>', unsafe_allow_html=True)
+    # Render a section header for any section except the Home section so
+    if section_name != "Home" and (section_name == "Recorder" or section_name == "Archer"): 
+        # Keep the small styling for role-based section.
+        st.markdown(f'<div class="section-small">{section_name}</div>', unsafe_allow_html=True)
+    else:
+        # Default section header for Public section.
+        st.markdown(f'<div class="section-header">{section_name}</div>', unsafe_allow_html=True)
 
     for label, page_id in links:
         # Wrap each button in a container to allow precise CSS targeting.
