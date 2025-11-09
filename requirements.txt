@@ -3,5 +3,4 @@ sqlalchemy
 pymysql
 pandas
 plotly
-cryptography
-pytest
+streamlit-aggrid

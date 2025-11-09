@@ -119,8 +119,11 @@ def _visible_sections(auth: AuthState) -> dict[str, list[tuple[str, str]]]:
 def _render_login_panel(auth: AuthState) -> None:
     if auth.logged_in:
         return
-    
-    # Custom CSS to hide the "Press Enter to submit" instruction
+    # We'll render a simple input and place the submit button outside the
+    # Streamlit form container so the button isn't affected by OS-level
+    # dark-mode form rendering. Use a text input and validate on submit.
+
+    # Hide the small InputInstructions Streamlit widget (if present)
     hide_form_instructions_style = """
         <style>
             [data-testid="InputInstructions"] {
@@ -130,44 +133,44 @@ def _render_login_panel(auth: AuthState) -> None:
     """
     st.markdown(hide_form_instructions_style, unsafe_allow_html=True)
 
-    with st.form("login_form", clear_on_submit=False, enter_to_submit=True):
-        # Use st.numeric_input to enforce numeric values client-side.
-        # initialize empty with value=None to use placeholder
-        # return=None(default) until the user enters a value to notify error.
-        member_id = st.number_input(
-            label="Member ID",
-            min_value=MEMBER_ID_MIN,
-            value=None,  # Set to None to show the placeholder
-            placeholder="Enter your Member ID",
-            format="%d",
-            step=1,
-        )
+    # Use a numeric input for Member ID (original behaviour). This
+    # enforces integer input and makes validation simpler.
+    member_id = st.number_input(
+        label="Member ID",
+        min_value=MEMBER_ID_MIN,
+        value=None,
+        placeholder="Enter your Member ID",
+        step=1,
+        format="%d",
+        key="ui.login_member_id",
+    )
 
-        submitted = st.form_submit_button("Log in", use_container_width=True)
-    if not submitted:
-        return
+    # Render the login button outside of any form so it's not styled by
+    # Streamlit's form submit variants (this helps avoid OS dark-mode
+    # visual treatments on the submit control).
+    if st.button("Log in", use_container_width=True, key="ui.login_submit"):
+        # Validation: ensure a numeric integer ID was entered
+        try:
+            member_id_int = int(member_id)
+        except Exception:
+            st.error("Please enter a valid numeric Member ID.")
+            return
 
-    # Validate numeric input: require a positive integer and handle the
-    # empty-initial state (None) returned when the user hasn't entered a value.
-    if member_id is None:
-        st.error("Please enter a valid numeric Member ID.")
-        return
+        profile = load_member_profile(member_id_int)
+        if not profile:
+            # Do not reveal whether the Member ID exists; use a generic message.
+            st.error("Invalid credentials. Please check your Member ID and try again.")
+            return
 
-    profile = load_member_profile(member_id)
-    if not profile:
-        # Do not reveal whether the Member ID exists; use a generic message.
-        st.error("Invalid credentials. Please check your Member ID and try again.")
-        return
-
-    _set_auth(AuthState(
-        logged_in=True,
-        id=profile["id"],
-        name=profile["full_name"],
-        is_recorder=profile["is_recorder"],
-        av=profile["av_number"],
-    ))
-    st.success("Login successful!")
-    st.rerun()
+        _set_auth(AuthState(
+            logged_in=True,
+            id=profile["id"],
+            name=profile["full_name"],
+            is_recorder=profile["is_recorder"],
+            av=profile["av_number"],
+        ))
+        st.success("Login successful!")
+        st.rerun()
 
 def _render_profile_panel(auth: AuthState) -> None:
     if not auth.logged_in:
@@ -253,11 +256,52 @@ def render_sidebar() -> None:
     if "current_page" not in st.session_state:
         st.session_state.current_page = "home"
 
+    # Render the entire sidebar inside the `st.sidebar` context so our
+    # scoped CSS variables and the #custom-sidebar wrapper apply to every
+    # control we add here.
     with st.sidebar:
         # Wrap the sidebar content in a single wrapper so our CSS is reliably
         # scoped. Render the CSS first so it applies to the subsequent HTML.
         if css_markup:
             st.markdown(css_markup, unsafe_allow_html=True)
+
+        # Strong, local overrides to guarantee the sidebar uses the light
+        # palette regardless of OS/browser dark mode. These rules are
+        # intentionally scoped to #custom-sidebar and use !important where
+        # needed to beat Streamlit-inserted inline styles. Keep this small
+        # and near the markup so it's easy to remove later if required.
+        force_light = """
+<style>
+    /* Force design tokens locally for the sidebar */
+    #custom-sidebar { --color-card: #ffffff; --color-foreground: #111111; --color-border: rgba(0,0,0,0.06); }
+
+    /* Target Streamlit's submit button variants that sometimes get a
+         dark background in OS dark mode and force a light appearance. */
+    #custom-sidebar button[data-testid^="stBaseButton"],
+    #custom-sidebar .stFormSubmitButton button,
+    #custom-sidebar button[kind^="secondary"] {
+        background: var(--color-card) !important;
+        color: var(--color-foreground) !important;
+        -webkit-text-fill-color: var(--color-foreground) !important;
+        border: 1px solid var(--color-border) !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+        background-image: none !important;
+        filter: none !important;
+    }
+
+    /* Also ensure inner text/icons are dark */
+    #custom-sidebar button[data-testid^="stBaseButton"] *,
+    #custom-sidebar .stFormSubmitButton button * {
+        color: var(--color-foreground) !important;
+        fill: var(--color-foreground) !important;
+    }
+</style>
+"""
+        st.markdown(force_light, unsafe_allow_html=True)
+
+        # Sidebar wrapper. Keep it minimal (no inline logo) so spacing
+        # is controlled entirely via CSS.
         st.markdown('<div id="custom-sidebar">', unsafe_allow_html=True)
         st.markdown("<h2>Archery Club</h2>", unsafe_allow_html=True)
         st.markdown("---")

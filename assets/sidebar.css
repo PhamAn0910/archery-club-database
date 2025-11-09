@@ -1,56 +1,325 @@
-/* assets/sidebar.css - scoped sidebar styles for Archery Club app */
+/* Sidebar design tokens and component styles for the Streamlit preview
+   and ui_sidebar. Kept separate from Python code so styling is modular. */
 
-/* Scope all rules under a single wrapper to avoid leaking styles */
-/* Use a dark panel for the sidebar to match the app mock */
-#custom-sidebar { background: #2f2e33; padding: 22px 18px 18px 18px; color: #e6e6e6; }
-#custom-sidebar h2 { margin: 0 0 12px 0; font-size: 22px; font-weight: 700; color: #ffffff; }
+/* --- Force the sidebar subtree to be treated as a light UI region ---
+   This prevents browsers or the OS from applying dark form-control
+   rendering to buttons/inputs inside our custom sidebar. Scoped to
+   #custom-sidebar so it does not affect the rest of the page. */
+#custom-sidebar {
+  color-scheme: light;
+  --color-card: #ffffff;
+  --color-foreground: #111111;
+  --color-border: rgba(0,0,0,0.06);
+  forced-color-adjust: none; /* prevents Windows forced-color overrides */
+}
 
-/* Profile card */
-#custom-sidebar .profile-card {
-  background: #ffffff; /* white card as in the mock */
-  border-radius: 10px;
-  padding: 14px 16px;
+/* Ensure form controls inside the sidebar prefer the light scheme too. */
+#custom-sidebar button,
+#custom-sidebar input,
+#custom-sidebar select,
+#custom-sidebar textarea {
+  color-scheme: light;
+  -webkit-appearance: none;
+  appearance: none;
+  forced-color-adjust: none;
+}
+
+/* Strong but scoped overrides for submit/login buttons to neutralise
+   any dark UA or injected styles (background-image, filters, text-fill).
+   These are intentionally specific and use !important only where needed. */
+#custom-sidebar button[data-testid^="stBaseButton"],
+#custom-sidebar .stFormSubmitButton button,
+#custom-sidebar form .stButton > button,
+#custom-sidebar .stForm .stButton > button {
+  background-color: var(--color-card) !important;
+  background-image: none !important;
+  color: var(--color-foreground) !important;
+  -webkit-text-fill-color: var(--color-foreground) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  forced-color-adjust: none !important;
+}
+
+/* Ensure inner text/icons stay legible */
+#custom-sidebar button[data-testid^="stBaseButton"] *,
+#custom-sidebar .stFormSubmitButton button * {
+  color: var(--color-foreground) !important;
+  fill: var(--color-foreground) !important;
+}
+
+/* Fallback safety: force readable text color for everything inside the
+   custom sidebar without affecting layout or visibility. Tighten later
+   if we see any undesired color changes. */
+#custom-sidebar, #custom-sidebar * {
+  color: var(--color-foreground) !important;
+  opacity: 1 !important;
+  forced-color-adjust: none !important;
+}
+
+/* --- Hide Streamlit's built-in sidebar nav only when it does NOT
+   contain our custom sidebar. This uses :has() so it's safe and
+   declarative on modern browsers; older browsers ignore it and
+   will still respect the button/input resets above. */
+[data-testid="stSidebarNav"]:not(:has(#custom-sidebar)),
+[data-testid="stSidebarNavItems"]:not(:has(#custom-sidebar)) {
+  display: none !important;
+}
+
+
+[data-testid="stSidebar"] {
+  /* keep the sidebar compact at the top; specific header rules below
+     neutralise any injected React/global rules that target header-like
+     elements so we don't get an unexpected dark band at the top */
+  padding: 0.12rem 0.5rem 0.4rem 0.5rem; /* tightened further per request */
+  background: var(--color-sidebar, var(--color-background, #ffffff));
+  color: var(--color-sidebar-foreground, var(--color-foreground, #000));
+}
+
+.profile-card {
+  background: var(--color-card, #fff);
+  color: var(--color-card-foreground, #000);
+  border-radius: calc(var(--radius, 0.625rem) - 4px);
+  padding: 12px 14px;
   box-shadow: 0 1px 0 rgba(16,24,40,0.04);
+  margin-bottom: 8px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* Defensive resets to prevent injected/global CSS from adding a
+   dark banner or extra top spacing above the sidebar title. These
+   rules are intentionally specific and scoped to our wrapper id so
+   they won't affect other parts of the app. */
+#custom-sidebar {
+  background: transparent;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+#custom-sidebar h2 {
+  margin: 0 0 0.25rem 0; /* remove default top margin from h2 */
+  padding: 0.08rem 0;   /* very tight spacing */
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-foreground, #111);
+  background: transparent; /* override any stray header background */
+}
+
+/* Some injected CSS targets the first child of containers; ensure the
+   first rendered element inside the Streamlit sidebar is transparent
+   and doesn't form a dark band. Use !important sparingly but here it's
+   needed to beat upstream injected rules that are global. */
+[data-testid="stSidebar"] > *:first-child,
+#custom-sidebar > *:first-child {
+  background: transparent !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Ensure there is absolutely no unexpected top gap inside the
+   sidebar regardless of upstream global rules. These selectors are
+   intentionally specific to avoid touching other app areas. */
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] > div > div,
+#custom-sidebar {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Reduce spacing produced by Markdown hr lines inside the sidebar */
+#custom-sidebar hr, [data-testid="stSidebar"] hr {
+  margin: 0.3rem 0;
+  border: none;
+  border-top: 1px solid var(--color-border, rgba(0,0,0,0.06));
+}
+
+/* Button styles: prefer light, card-like buttons and avoid dark
+   backgrounds entirely (including hover). These rules apply to
+   Streamlit buttons globally so the app doesn't show dark buttons. */
+.stButton > button {
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--color-card, #ffffff) !important;
+  color: var(--color-foreground, #111) !important;
+  border: 1px solid var(--color-border, rgba(0,0,0,0.06)) !important;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+.stButton > button:hover {
+  background: var(--color-accent, #f3f3f5) !important;
+  color: var(--color-foreground, #111) !important;
+  opacity: 1 !important;
+}
+
+/* Login button inside forms should be clearly visible but remain light.
+   Use a card-like background and dark text so it reads well in both
+   light and dark OS/browser modes. */
+#custom-sidebar form .stButton > button,
+#custom-sidebar .stForm .stButton > button {
+  background: var(--color-card, #ffffff) !important;
+  color: var(--color-foreground, #111) !important;
+  border: 1px solid var(--color-border, rgba(0,0,0,0.06)) !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+/* Style the Streamlit form container so its border doesn't peek out
+   unexpectedly. Streamlit nests form fields; we style the immediate
+   inner wrapper to look like the card in the React app. */
+/* Style form-like containers and individual inputs so a login card
+   appearance is preserved even when not using Streamlit's <form>. */
+#custom-sidebar .stForm,
+#custom-sidebar form,
+#custom-sidebar .login-card {
+  background: transparent;
+  border: none !important;
+  padding: 0;
+}
+#custom-sidebar .stForm > div:first-child,
+#custom-sidebar form > div:first-child,
+#custom-sidebar .login-card,
+#custom-sidebar [data-testid="stTextInput"],
+#custom-sidebar [data-testid="stNumberInput"] {
+  background: var(--color-card, #fff);
+  border-radius: calc(var(--radius, 0.625rem));
+  padding: 12px 14px;
+  box-shadow: 0 1px 0 rgba(16,24,40,0.04);
+  border: 1px solid var(--color-border, rgba(0,0,0,0.06));
+  margin-bottom: 8px;
+  overflow: hidden; /* clip any inner controls that might overflow the card */
+}
+
+/* Strong override for the login/form submit button inside the sidebar.
+   Streamlit may add inline styles or classes that produce a dark
+   background under OS dark mode; we force a light, high-contrast
+   appearance here so markers can always read the label. */
+#custom-sidebar .stForm .stButton > button,
+#custom-sidebar form .stButton > button,
+#custom-sidebar button[data-testid^="stBaseButton"],
+#custom-sidebar .stFormSubmitButton button {
+  background: var(--color-card, #ffffff) !important;
+  color: var(--color-foreground, #111) !important;
+  -webkit-text-fill-color: var(--color-foreground, #111) !important;
+  border: 1px solid var(--color-border, rgba(0,0,0,0.06)) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  background-image: none !important;
+  filter: none !important;
+}
+
+/* Ensure any inner spans or SVG icons don't reduce legibility */
+#custom-sidebar .stButton > button * {
+  color: var(--color-foreground, #111) !important;
+  fill: var(--color-foreground, #111) !important;
+}
+
+/* Inputs inside the sidebar form: remove outer browser focus outlines,
+   remove double borders and ensure inputs look flush inside the card. */
+#custom-sidebar input,
+#custom-sidebar input[type="number"],
+#custom-sidebar textarea,
+#custom-sidebar select {
+  border: 1px solid rgba(0,0,0,0.06) !important;
+  background: var(--color-input-background, #f3f3f5) !important;
+  padding: 8px 10px !important;
+  border-radius: calc(var(--radius, 0.625rem) - 6px) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* NAVIGATION BUTTONS: make section/nav buttons borderless and stacked
+   so vertical spacing is reduced. We apply this to sidebar buttons and
+   then separately style form buttons (login) to remain card-like. */
+#custom-sidebar .stButton > button {
+  background: transparent !important;
+  border: none !important;
+  padding: 8px 8px !important;
+  width: 100% !important;
+  text-align: left !important;
+  display: block !important;
+  margin: 0 0 6px 0 !important; /* slight separation between items */
+  box-shadow: none !important;
+  color: var(--color-foreground, #111) !important;
+}
+
+#custom-sidebar .sidebar-nav { display: flex; flex-direction: column; gap: 0; }
+#custom-sidebar .nav-button { margin: 0; padding: 0; }
+#custom-sidebar .sidebar-nav .nav-item.active {
+  background: transparent !important;
+  color: var(--color-foreground, #111) !important;
+  font-weight: 600;
+}
+
+/* Remove focus rings and validation outlines that can create a red
+   band around inputs on some browsers. We still keep a subtle inner
+   border for affordance. */
+#custom-sidebar input:focus,
+#custom-sidebar input:focus-visible,
+#custom-sidebar textarea:focus,
+#custom-sidebar select:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+
+/* Ensure sidebar buttons use dark text on light backgrounds so they
+   remain legible without relying on dark fills. */
+#custom-sidebar .stButton > button,
+#custom-sidebar .stButton > button * {
+  color: var(--color-foreground, #111) !important;
+}
+
+/* Optional logo slot above the title — add an <img class="sidebar-logo"> inside
+   the `#custom-sidebar` before the <h2>` if you want a logo to occupy the
+   top area. This helps when you intentionally want a visual element to sit
+   above the title instead of seeing unexpected gaps. */
+#custom-sidebar .sidebar-logo {
+  display: block;
+  width: 56px;
+  height: auto;
+  margin: 0 0 8px 0;
+}
+
+/* Defensive reset for any top-of-page banner or injected header that
+   appears in dark mode on some machines. Keep this scoped to the
+   Streamlit app root so we don't touch the React preview assets. */
+.stApp > *:first-child,
+.stApp header,
+.stApp > div[role="banner"],
+.stApp > [data-testid="stToolbar"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.profile-top { color: var(--color-muted-foreground, #6b6b6b); font-size: 13px; }
+.profile-name { font-weight: 600; margin-top: 6px; margin-bottom: 2px; }
+.profile-av { color: var(--color-muted-foreground, #7b7b7b); font-size: 13px; }
+
+.sidebar-nav { display: flex; flex-direction: column; gap: 8px; }
+.sidebar-nav a, .sidebar-nav .nav-item {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  background: transparent;
+}
+.sidebar-nav .nav-item.active {
+  /* Active nav uses a light accent rather than a dark band */
+  background: var(--color-accent, #f3f3f5);
+  color: var(--color-foreground, #111);
+}
+
+/* Small utility for content preview cards used on preview page */
+.preview-card {
+  background: var(--color-card, #fff);
+  border-radius: calc(var(--radius, 0.625rem));
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(2,6,23,0.06);
   margin-bottom: 12px;
 }
-#custom-sidebar .profile-top { color: #6b6b6b; font-size: 13px; }
-#custom-sidebar .profile-name { font-weight: 600; margin-top: 6px; margin-bottom: 2px; color: #222; }
-#custom-sidebar .profile-av { color: #7b7b7b; font-size: 13px; }
-
-/* Buttons: pill shape, spacing and active state. Streamlit uses <button>, so
-   target buttons scoped under our wrapper. */
-#custom-sidebar .nav-button > div > button,
-#custom-sidebar button[role="button"] {
-  border-radius: 10px !important;
-  padding: 12px 16px !important;
-  text-align: left;
-  width: 100%;
-  background: transparent !important;
-  color: #e6e6e6 !important;
-  border: 1px solid rgba(255,255,255,0.04) !important;
-  margin-bottom: 12px;
-  font-size: 16px;
-}
-
-/* Make the primary (active) button darker and the rest neutral */
-#custom-sidebar .stButton>button[aria-pressed="true"],
-#custom-sidebar .stButton>button[aria-current="true"] {
-  background: #f45b5b !important; /* red active */
-  color: #fff !important;
-  border-color: #f45b5b !important;
-}
-
-/* Logout button: slightly larger and filled dark background */
-#custom-sidebar .logout-button > button {
-  background: transparent !important;
-  border: 1px solid rgba(255,255,255,0.06) !important;
-}
-
-#custom-sidebar .logout-filled > button {
-  background: rgba(0,0,0,0.3) !important;
-  color: #ffffffe8 !important;
-  border-color: rgba(255, 255, 255, 0.012) !important;
-}
-
-/* Section small headings (e.g., Recorder) */
-#custom-sidebar .section-small { color:#6b6b6b; font-size:12px; margin-top:12px; margin-bottom:6px; }
