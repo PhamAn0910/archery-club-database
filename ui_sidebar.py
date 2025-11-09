@@ -2,7 +2,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
+
 import streamlit as st
+import streamlit.components.v1 as components
 
 from auth import load_member_profile  # dependency injected at module level
 
@@ -25,10 +28,10 @@ def _load_sidebar_css() -> str:
     try:
         css_path = BASE_DIR / "assets" / "sidebar.css"
         text = css_path.read_text(encoding="utf-8")
-        # If the file already contains a <style> tag, return as-is. Otherwise
-        # wrap the CSS in a <style> so Streamlit injects it rather than
-        # rendering it as visible text.
-        if "<style" in text:
+        # If the file already starts with a <style> tag, return as-is.
+        # Using startswith avoids false-positives where the substring
+        # '<style>' appears inside a comment or elsewhere.
+        if text.lstrip().startswith("<style>"):
             return text
         return f"<style>\n{text}\n</style>"
     except Exception:
@@ -119,9 +122,10 @@ def _visible_sections(auth: AuthState) -> dict[str, list[tuple[str, str]]]:
 def _render_login_panel(auth: AuthState) -> None:
     if auth.logged_in:
         return
+
     # We'll render a simple input and place the submit button outside the
     # Streamlit form container so the button isn't affected by OS-level
-    # dark-mode form rendering. Use a text input and validate on submit.
+    # dark-mode form rendering. Use a number input and validate on submit.
 
     # Hide the small InputInstructions Streamlit widget (if present)
     hide_form_instructions_style = """
@@ -135,30 +139,72 @@ def _render_login_panel(auth: AuthState) -> None:
 
     # Use a numeric input for Member ID (original behaviour). This
     # enforces integer input and makes validation simpler.
+    # Use typing.cast to keep the runtime value as None but satisfy the
+    # type-checker (Streamlit's number_input expects a numeric default).
+    # At runtime this still produces an empty input with the placeholder
+    # visible; cast silences Pylance's reportArgumentType.
     member_id = st.number_input(
         label="Member ID",
         min_value=MEMBER_ID_MIN,
-        value=None,
+        value=cast(int, None),
         placeholder="Enter your Member ID",
         step=1,
         format="%d",
         key="ui.login_member_id",
     )
 
+    # Inject a small client-side script that submits the login when the
+    # user presses Enter while focused in the Member ID input. This uses
+    # the input's aria-label to locate it and clicks the visible 'Log in'
+    # button; it doesn't change layout or widget types.
+    components.html(
+        """
+        <script>
+        (function(){
+          const tryAttach = () => {
+            const input = document.querySelector('input[aria-label="Member ID"]');
+            const btn = Array.from(document.querySelectorAll('button')).find(b=>b.innerText && b.innerText.trim()==='Log in');
+            if(input && btn){
+              input.addEventListener('keydown', function(e){
+                if(e.key === 'Enter'){
+                  btn.click();
+                }
+              });
+              return true;
+            }
+            return false;
+          };
+          const timer = setInterval(()=>{ if(tryAttach()) clearInterval(timer); }, 200);
+          setTimeout(()=>clearInterval(timer), 5000);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
     # Render the login button outside of any form so it's not styled by
-    # Streamlit's form submit variants (this helps avoid OS dark-mode
-    # visual treatments on the submit control).
+    # Streamlit's form submit variants (this helps avoid OS dark-mode visual
+    # treatments on the submit control).
     if st.button("Log in", use_container_width=True, key="ui.login_submit"):
-        # Validation: ensure a numeric integer ID was entered
+        # Explicit None check first (clear, local validation). This avoids
+        # catching unrelated exceptions and communicates intent.
+        if member_id is None:
+            st.error("Please enter a valid numeric Member ID.")
+            return
+
+        # Convert to a plain Python int for downstream code. Keep the
+        # conversion local to this handler so we don't mutate stored data
+        # globally.
         try:
             member_id_int = int(member_id)
-        except Exception:
+        except (TypeError, ValueError):
             st.error("Please enter a valid numeric Member ID.")
             return
 
         profile = load_member_profile(member_id_int)
         if not profile:
-            # Do not reveal whether the Member ID exists; use a generic message.
+            # Do not reveal whether the Member ID exists; use a generic
+            # message.
             st.error("Invalid credentials. Please check your Member ID and try again.")
             return
 
@@ -191,12 +237,12 @@ def _profile_card_html(auth: AuthState) -> str:
         Kept small so unit tests can verify HTML structure independently.
         """
         return f"""
-<div class="profile-card">
-    <div class="profile-top">Logged in as</div>
-    <div class="profile-name">{auth.name or ''}</div>
-    <div class="profile-av">{auth.av or ''}</div>
-</div>
-"""
+        <div class="profile-card">
+            <div class="profile-top">Logged in as</div>
+            <div class="profile-name">{auth.name or ''}</div>
+            <div class="profile-av">{auth.av or ''}</div>
+        </div>
+        """
 
 def _render_nav(sections: dict[str, list[tuple[str, str]]]) -> None:
     # Navigation (Home first)
@@ -265,40 +311,10 @@ def render_sidebar() -> None:
         if css_markup:
             st.markdown(css_markup, unsafe_allow_html=True)
 
-        # Strong, local overrides to guarantee the sidebar uses the light
-        # palette regardless of OS/browser dark mode. These rules are
-        # intentionally scoped to #custom-sidebar and use !important where
-        # needed to beat Streamlit-inserted inline styles. Keep this small
-        # and near the markup so it's easy to remove later if required.
-        force_light = """
-<style>
-    /* Force design tokens locally for the sidebar */
-    #custom-sidebar { --color-card: #ffffff; --color-foreground: #111111; --color-border: rgba(0,0,0,0.06); }
-
-    /* Target Streamlit's submit button variants that sometimes get a
-         dark background in OS dark mode and force a light appearance. */
-    #custom-sidebar button[data-testid^="stBaseButton"],
-    #custom-sidebar .stFormSubmitButton button,
-    #custom-sidebar button[kind^="secondary"] {
-        background: var(--color-card) !important;
-        color: var(--color-foreground) !important;
-        -webkit-text-fill-color: var(--color-foreground) !important;
-        border: 1px solid var(--color-border) !important;
-        box-shadow: none !important;
-        opacity: 1 !important;
-        background-image: none !important;
-        filter: none !important;
-    }
-
-    /* Also ensure inner text/icons are dark */
-    #custom-sidebar button[data-testid^="stBaseButton"] *,
-    #custom-sidebar .stFormSubmitButton button * {
-        color: var(--color-foreground) !important;
-        fill: var(--color-foreground) !important;
-    }
-</style>
-"""
-        st.markdown(force_light, unsafe_allow_html=True)
+        # Local sidebar styles are now moved to assets/sidebar.css and
+        # are loaded via _load_sidebar_css(). This keeps presentation
+        # separate from logic and makes the styles easier to test and
+        # maintain.
 
         # Sidebar wrapper. Keep it minimal (no inline logo) so spacing
         # is controlled entirely via CSS.

@@ -1,3 +1,63 @@
+/* Local sidebar style overrides. Kept scoped to #custom-sidebar to avoid
+  affecting other Streamlit widgets in the app. This file is loaded by
+  `ui_sidebar._load_sidebar_css()` and wrapped in a style tag if needed.
+*/
+
+/* Force design tokens locally for the sidebar (light by default). */
+#custom-sidebar { --color-card: #ffffff; --color-foreground: #111111; --color-border: rgba(0,0,0,0.06); }
+
+/* Target Streamlit's submit button variants that sometimes get a
+   dark background in OS dark mode and force a light appearance. */
+#custom-sidebar button[data-testid^="stBaseButton"],
+#custom-sidebar .stFormSubmitButton button,
+#custom-sidebar button[kind^="secondary"] {
+  background: var(--color-card) !important;
+  color: var(--color-foreground) !important;
+  -webkit-text-fill-color: var(--color-foreground) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  background-image: none !important;
+  filter: none !important;
+}
+
+/* Also ensure inner text/icons are dark */
+#custom-sidebar button[data-testid^="stBaseButton"] *,
+#custom-sidebar .stFormSubmitButton button * {
+  color: var(--color-foreground) !important;
+  fill: var(--color-foreground) !important;
+}
+
+/* Ensure placeholder text is visible in the default (light) theme */
+#custom-sidebar input::placeholder,
+#custom-sidebar input::-webkit-input-placeholder,
+#custom-sidebar input::-ms-input-placeholder {
+  color: rgba(0,0,0,0.45) !important;
+  -webkit-text-fill-color: rgba(0,0,0,0.45) !important;
+}
+
+/*
+  In OS-level dark mode, prefer leaving the number input field dark so
+  that a bright placeholder remains readable. This keeps buttons and the
+  rest of the sidebar using the light palette (so the site's card look
+  is preserved), but makes input controls readable in dark environments.
+*/
+@media (prefers-color-scheme: dark) {
+    /* Make number inputs dark with bright placeholder text */
+    #custom-sidebar input[type="number"] {
+      background: #111111 !important;
+      color: #ffffff !important;
+      border-color: rgba(255,255,255,0.08) !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
+
+    #custom-sidebar input::placeholder,
+    #custom-sidebar input::-webkit-input-placeholder,
+    #custom-sidebar input::-ms-input-placeholder {
+      color: rgba(255,255,255,0.75) !important;
+      -webkit-text-fill-color: rgba(255,255,255,0.75) !important;
+    }
+}
 /* Sidebar design tokens and component styles for the Streamlit preview
    and ui_sidebar. Kept separate from Python code so styling is modular. */
 
@@ -6,11 +66,13 @@
    rendering to buttons/inputs inside our custom sidebar. Scoped to
    #custom-sidebar so it does not affect the rest of the page. */
 #custom-sidebar {
-  color-scheme: light;
+  /* Do not force a light color-scheme here. Allow the OS/browser to
+     choose dark vs light rendering for native form controls so the
+     number input can appear dark in dark mode (improves placeholder
+     contrast when the placeholder color is constant). */
   --color-card: #ffffff;
   --color-foreground: #111111;
   --color-border: rgba(0,0,0,0.06);
-  forced-color-adjust: none; /* prevents Windows forced-color overrides */
 }
 
 /* Ensure form controls inside the sidebar prefer the light scheme too. */
@@ -18,10 +80,10 @@
 #custom-sidebar input,
 #custom-sidebar select,
 #custom-sidebar textarea {
-  color-scheme: light;
+  /* Keep appearance adjustments but do not force color-scheme so
+     number inputs can follow the user's OS theme. */
   -webkit-appearance: none;
   appearance: none;
-  forced-color-adjust: none;
 }
 
 /* Strong but scoped overrides for submit/login buttons to neutralise
@@ -53,11 +115,12 @@
 
 /* Fallback safety: force readable text color for everything inside the
    custom sidebar without affecting layout or visibility. Tighten later
-   if we see any undesired color changes. */
+   if we see any undesired color changes. Note: do NOT disable
+   forced-color-adjust globally here so native form controls (number
+   inputs) can follow the OS/browser color scheme in dark mode. */
 #custom-sidebar, #custom-sidebar * {
   color: var(--color-foreground) !important;
   opacity: 1 !important;
-  forced-color-adjust: none !important;
 }
 
 /* --- Hide Streamlit's built-in sidebar nav only when it does NOT
@@ -218,12 +281,14 @@
 
 /* Inputs inside the sidebar form: remove outer browser focus outlines,
    remove double borders and ensure inputs look flush inside the card. */
-#custom-sidebar input,
-#custom-sidebar input[type="number"],
+/* Style non-number inputs (textareas/selects) as card fields but
+   allow number inputs to use the native OS rendering so their
+   placeholders remain visible in dark mode. */
+#custom-sidebar input:not([type="number"]),
 #custom-sidebar textarea,
 #custom-sidebar select {
   border: 1px solid rgba(0,0,0,0.06) !important;
-  background: var(--color-input-background, #f3f3f5) !important;
+  /* background: var(--color-input-background, #f3f5f5) !important; */
   padding: 8px 10px !important;
   border-radius: calc(var(--radius, 0.625rem) - 6px) !important;
   outline: none !important;
@@ -322,4 +387,32 @@
   padding: 16px;
   box-shadow: 0 1px 4px rgba(2,6,23,0.06);
   margin-bottom: 12px;
+}
+
+/* ------------------------------------------------------------------
+   Button border peek-through fix
+
+   Ensure the sidebar wrapper has an opaque background and a subtle
+   separating shadow so button borders (which may be transparent or
+   intentionally borderless for nav items) do not visually show the
+   page background through the sidebar. This is scoped to #custom-sidebar
+   and uses a conservative box-shadow to avoid changing layout or the
+   intended visual design.
+   ------------------------------------------------------------------ */
+#custom-sidebar {
+  background: var(--color-card, #ffffff) !important;
+  box-shadow: 0 1px 0 rgba(16,24,40,0.04) !important;
+  isolation: isolate; /* ensure stacking context so shadows render cleanly */
+}
+
+/* Final safety: allow native number inputs to use the browser/OS
+   default appearance so they render dark in OS dark mode. This avoids
+   our earlier card-like background (#f3f3f5) being applied and hiding
+   the constant grey placeholder. */
+.st-emotion-cache-1weic72 {
+  background: revert !important;
+  color: revert !important;
+  -webkit-appearance: auto !important;
+  appearance: auto !important;
+  forced-color-adjust: auto !important;
 }

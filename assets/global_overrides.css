@@ -45,7 +45,11 @@ html, body, .stApp {
 }
 
 /* Inputs: text, number, textarea */
-input[type="text"], input[type="number"], textarea, select {
+textarea, select {
+/* input[type="text"], input[type="number"], 
+do NOT include these 2 class 
+if want the st.number_input use Streamlit default theme 
+when toggling OS-level dark and light modes */ 
   background: var(--color-input-background, #f3f3f5);
   color: var(--color-foreground, #111);
   border: 1px solid var(--color-border, rgba(0,0,0,0.08));
