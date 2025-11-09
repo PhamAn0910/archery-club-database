@@ -319,6 +319,58 @@ def render_sidebar() -> None:
         # Sidebar wrapper. Keep it minimal (no inline logo) so spacing
         # is controlled entirely via CSS.
         st.markdown('<div id="custom-sidebar">', unsafe_allow_html=True)
+
+        # Client-side behavior: mark the most recently clicked sidebar button
+        # with an 'always-active' class so it remains highlighted even while
+        # Streamlit processes the click. Remove the class from other buttons.
+        # This provides instant visual feedback without changing the app logic.
+        components.html(
+            """
+            <script>
+            (function(){
+              const attachButtonListeners = () => {
+                const sidebarContainer = document.getElementById('custom-sidebar');
+                if(!sidebarContainer) return false;
+                
+                // Select only PRIMARY buttons (navigation), exclude SECONDARY buttons (Login/Logout)
+                const navButtons = Array.from(sidebarContainer.querySelectorAll('button[kind="primary"]'));
+                
+                if(navButtons.length === 0) return false;
+                
+                navButtons.forEach(btn => {
+                  // Skip if listener already attached
+                  if(btn.dataset._alwaysActiveAttached === '1') return;
+                  btn.dataset._alwaysActiveAttached = '1';
+                  
+                  // Click handler
+                  btn.addEventListener('click', (e) => {
+                    navButtons.forEach(b => b.classList.remove('always-active'));
+                    e.currentTarget.classList.add('always-active');
+                  });
+                  
+                  // Keyboard handler
+                  btn.addEventListener('keydown', (e) => {
+                    if(e.key === 'Enter' || e.key === ' ') {
+                      navButtons.forEach(b => b.classList.remove('always-active'));
+                      btn.classList.add('always-active');
+                    }
+                  });
+                });
+                return true;
+              };
+              
+              // Retry until buttons are found
+              const retryInterval = setInterval(() => {
+                if(attachButtonListeners()) clearInterval(retryInterval);
+              }, 200);
+              
+              setTimeout(() => clearInterval(retryInterval), 5000);
+            })();
+            </script>
+            """,
+            height=0,
+        )
+
         st.markdown("<h2>Archery Club</h2>", unsafe_allow_html=True)
         st.markdown("---")
 

@@ -22,7 +22,7 @@ html, body, .stApp {
 
 /* Headings inside Streamlit markdown should inherit tokens */
 .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-  color: var(--color-foreground, #111);
+  /* color: var(--color-foreground, #111); */
   font-weight: 600;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
@@ -34,14 +34,13 @@ html, body, .stApp {
   padding: 0.5rem 0.75rem;
   background: var(--color-primary, #030213);
   color: var(--color-primary-foreground, #fff);
-  border: 1px solid rgba(0,0,0,0.06);
   box-shadow: none;
 }
 
 /* Secondary-looking buttons (when Streamlit marks them differently) */
 .stButton[role] > button[aria-pressed="false"] {
   background: transparent;
-  color: var(--color-foreground, #111);
+  /* color: var(--color-foreground, #111); */
 }
 
 /* Inputs: text, number, textarea */
@@ -51,8 +50,9 @@ do NOT include these 2 class
 if want the st.number_input use Streamlit default theme 
 when toggling OS-level dark and light modes */ 
   background: var(--color-input-background, #f3f3f5);
-  color: var(--color-foreground, #111);
-  border: 1px solid var(--color-border, rgba(0,0,0,0.08));
+  /* color: var(--color-foreground, #111); */
+  /* border: 1px solid var(--color-border, rgba(0,0,0,0.08)); */
+  border: 1px solid;
   padding: 8px 10px;
   border-radius: calc(var(--ui-radius) - 4px);
 }
@@ -121,17 +121,17 @@ select, .stSelectbox select, .stSelectbox div[role="combobox"] {
   border: 1px solid var(--color-border, rgba(0,0,0,0.08));
   padding: 8px 10px;
   border-radius: calc(var(--ui-radius) - 4px);
-  color: var(--color-foreground, #111);
+  /* color: var(--color-foreground, #111); */
 }
 
 /* Tabs: make Streamlit tabs align with tokens */
 .stTabs, .stTabs button, .stTabs [role="tab"] {
   font-family: var(--ui-font-family);
-  color: var(--color-foreground, #111);
+  /* color: var(--color-foreground, #111); */
 }
 .stTabs [role="tab"][aria-selected="true"] {
   background: var(--color-secondary, #f0f0f0);
-  color: var(--color-secondary-foreground, #000);
+  /* color: var(--color-secondary-foreground, #000); */
   border-radius: calc(var(--ui-radius));
 }
 
@@ -147,7 +147,7 @@ table, .stDataFrame table {
 }
 table thead th {
   background: var(--color-accent, #f3f3f5) !important;
-  color: var(--color-accent-foreground, #000) !important;
+  /* color: var(--color-accent-foreground, #000) !important; */
   font-weight: 600;
 }
 
