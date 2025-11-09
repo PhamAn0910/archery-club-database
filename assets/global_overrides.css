@@ -70,18 +70,18 @@ when toggling OS-level dark and light modes */
   border-radius: calc(var(--ui-radius));
   overflow: hidden;
 }
-.stDataFrame thead th {
+/* .stDataFrame thead th {
   background: var(--color-accent, #f3f3f5);
   color: var(--color-accent-foreground, #000);
-}
+} */
 
 /* Cards used in preview/content */
 .preview-card, .card, .stBlock {
-  background: var(--color-card, #fff);
+  /* background: var(--color-card, #fff); */
   color: var(--color-card-foreground, #000);
   border-radius: calc(var(--ui-radius));
   padding: 12px;
-  box-shadow: 0 1px 4px rgba(2,6,23,0.06);
+  /* box-shadow: 0 1px 4px rgba(2,6,23,0.06); */
 }
 
 /* Sidebar spacing (scoped) */
@@ -98,8 +98,8 @@ when toggling OS-level dark and light modes */
    role="status". These rules map to the project's accent tokens. */
 .stAlert, .stInfo, .stWarning, .stSuccess, .stError,
 [role="status"] {
-  background: var(--color-accent, #f3f3f5);
-  color: var(--color-accent-foreground, #000);
+  /* background: var(--color-accent, #f3f3f5);
+  color: var(--color-accent-foreground, #000); */
   padding: 10px 12px;
   border-radius: calc(var(--ui-radius));
   border-left: 4px solid var(--color-primary, #030213);
@@ -111,7 +111,7 @@ when toggling OS-level dark and light modes */
 .stMetric, .stMetricValue, .stMetricDelta,
 .stMetric > div, .stMetricValue > div {
   font-family: var(--ui-font-family);
-  color: var(--color-primary, #030213);
+  /* color: var(--color-primary, #030213); */
 }
 
 /* Selectbox / dropdown fallbacks: Streamlit sometimes uses native select
