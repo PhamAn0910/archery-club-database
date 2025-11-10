@@ -141,13 +141,13 @@
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button,
 [data-testid="stSidebar"] button {
-  color: #111111 !important;
+  color: #ffffff !important;
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   transition: background 120ms ease, border-color 150ms ease !important;
   padding: 8px 12px !important;
-  border-radius: 8px !important;
+  /* border-radius: 8px !important; */
   width: 100% !important;
   font-weight: 400 !important;
 }
@@ -155,8 +155,8 @@
 /* STEP 3: DEFAULT - White background for ALL buttons (Login/Logout base) */
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
+  background: #f3f3f5 !important;
+  background-color: #f3f3f5 !important;
   background-image: none !important;
   border: 1px solid rgba(0, 0, 0, 0.06) !important;
   color: #111111 !important;
@@ -200,12 +200,20 @@
 
 /* STEP 5: OVERRIDE for type="secondary" buttons - Transparent (unselected nav) */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"],
-[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"],
 [data-testid="stSidebar"] .stButton > button[data-baseweb="button"][kind="secondary"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"] {
+[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"] {
   background: transparent !important;
   background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  color: #111111 !important;
+  font-weight: 400 !important;
+  text-align: left !important;
+}
+
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"] {
+
   background-image: none !important;
   border: none !important;
   color: #111111 !important;

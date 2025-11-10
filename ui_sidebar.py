@@ -146,8 +146,8 @@ def _render_login_panel(auth: AuthState) -> None:
     member_id = st.number_input(
         label="Member ID",
         min_value=MEMBER_ID_MIN,
-        value=cast(int, None),
-        placeholder="Enter your Member ID",
+        value=cast(int, MEMBER_ID_MIN),
+        # placeholder="Enter your Member ID",
         step=1,
         format="%d",
         key="ui.login_member_id",
