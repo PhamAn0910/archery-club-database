@@ -1,80 +1,38 @@
-/* Local sidebar style overrides. Kept scoped to #custom-sidebar to avoid
-  affecting other Streamlit widgets in the app. This file is loaded by
-  `ui_sidebar._load_sidebar_css()` and wrapped in a style tag if needed.
-*/
+/* =============================================================================
+   SIDEBAR STYLES - Modular, scoped overrides for custom sidebar
+   ============================================================================= */
 
-/* Force design tokens locally for the sidebar (light by default). */
-#custom-sidebar { --color-card: #ffffff; --color-foreground: #111111; --color-border: rgba(0,0,0,0.06); }
-
-/* Placeholder - Login/Logout button styles moved below after GLOBAL OVERRIDE section */
-
-/* Ensure placeholder text is visible in the default (light) theme */
-#custom-sidebar input::placeholder,
-#custom-sidebar input::-webkit-input-placeholder,
-#custom-sidebar input::-ms-input-placeholder {
-  color: rgba(0,0,0,0.45) !important;
-  /* -webkit-text-fill-color: rgba(0,0,0,0.45) !important; */
-}
-
-/*
-  In OS-level dark mode, prefer leaving the number input field dark so
-  that a bright placeholder remains readable. This keeps buttons and the
-  rest of the sidebar using the light palette (so the site's card look
-  is preserved), but makes input controls readable in dark environments.
-*/
-@media (prefers-color-scheme: dark) {
-    /* Make number inputs dark with bright placeholder text */
-    #custom-sidebar input[type="number"] {
-      background: #111111 !important;
-      color: #ffffff !important;
-      border-color: rgba(255,255,255,0.08) !important;
-      /* -webkit-text-fill-color: #ffffff !important; */
-    }
-
-    #custom-sidebar input::placeholder,
-    #custom-sidebar input::-webkit-input-placeholder,
-    #custom-sidebar input::-ms-input-placeholder {
-      color: rgba(255,255,255,0.75) !important;
-      /* -webkit-text-fill-color: rgba(255,255,255,0.75) !important; */
-    }
-}
-/* Sidebar design tokens and component styles for the Streamlit preview
-   and ui_sidebar. Kept separate from Python code so styling is modular. */
-
-/* --- Force the sidebar subtree to be treated as a light UI region ---
-   This prevents browsers or the OS from applying dark form-control
-   rendering to buttons/inputs inside our custom sidebar. Scoped to
-   #custom-sidebar so it does not affect the rest of the page. */
+/* Force light theme design tokens for sidebar (ignores OS dark mode) */
 #custom-sidebar {
-  /* Do not force a light color-scheme here. Allow the OS/browser to
-     choose dark vs light rendering for native form controls so the
-     number input can appear dark in dark mode (improves placeholder
-     contrast when the placeholder color is constant). */
   --color-card: #ffffff;
   --color-foreground: #111111;
-  --color-border: rgba(0,0,0,0.06);
+  --color-border: rgba(0, 0, 0, 0.06);
+  --color-hover: rgba(243, 243, 245, 0.5);
+  --color-active: #f3f3f5;
+  
+  /* Force light background regardless of OS theme */
+  background: #ffffff !important;
+  margin-top: 0;
+  padding-top: 0;
 }
 
-/* Ensure form controls inside the sidebar prefer the light scheme too. */
-#custom-sidebar button,
-#custom-sidebar input,
-#custom-sidebar select,
-#custom-sidebar textarea {
-  /* Keep appearance adjustments but do not force color-scheme so
-     number inputs can follow the user's OS theme. */
-  -webkit-appearance: none;
-  appearance: none;
-}
+/* =============================================================================
+   INPUT STYLES
+   ============================================================================= */
 
-/* Fallback safety: force readable text color for everything inside the
-   custom sidebar without affecting layout or visibility. Tighten later
-   if we see any undesired color changes. Note: do NOT disable
-   forced-color-adjust globally here so native form controls (number
-   inputs) can follow the OS/browser color scheme in dark mode. */
-#custom-sidebar, #custom-sidebar * {
-  color: var(--color-foreground) !important;
-  opacity: 1 !important;
+/* Number input: Allow dark rendering in OS dark mode for placeholder visibility */
+@media (prefers-color-scheme: dark) {
+  #custom-sidebar input[type="number"] {
+    background: #111111 !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  #custom-sidebar input[type="number"]::placeholder {
+    color: rgba(255, 255, 255, 0.75) !important;
+  }
 }
+/* Text inputs, textarea, select: Keep light theme styling */
 
 /* --- Hide Streamlit's built-in sidebar nav only when it does NOT
    contain our custom sidebar. This uses :has() so it's safe and
@@ -152,243 +110,213 @@
   border-top: 1px solid var(--color-border, rgba(0,0,0,0.06));
 }
 
-/* Inputs inside the sidebar: remove outer browser focus outlines,
-   remove double borders and ensure inputs look flush inside the card. */
 #custom-sidebar input:not([type="number"]),
 #custom-sidebar textarea,
 #custom-sidebar select {
-  border: 1px solid rgba(0,0,0,0.06) !important;
+  border: 1px solid var(--color-border) !important;
   padding: 8px 10px !important;
-  border-radius: calc(var(--radius, 0.625rem) - 6px) !important;
+  border-radius: 6px !important;
   outline: none !important;
   box-shadow: none !important;
 }
 
-/* GLOBAL OVERRIDE: Remove red border from Streamlit's emotion cache class that appears on navigation buttons */
-.st-emotion-cache-1krtkoa,
-.st-emotion-cache-1krtkoa:focus,
-.st-emotion-cache-1krtkoa:focus-visible,
-.st-emotion-cache-1krtkoa:active {
+#custom-sidebar input:focus,
+#custom-sidebar textarea:focus,
+#custom-sidebar select:focus {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* =============================================================================
+   BUTTON STYLES - NUCLEAR OPTION: Force override with !important everywhere
+   ============================================================================= */
+
+/* STEP 1: Reduce button container gaps */
+[data-testid="stSidebar"] .stButton,
+[data-testid="stSidebar"] #custom-sidebar .stButton {
+  margin: 0 0 4px 0 !important;
+  padding: 0 !important;
+}
+
+/* STEP 2: ALL sidebar buttons - force base styles */
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button,
+[data-testid="stSidebar"] button {
+  color: #111111 !important;
+  outline: none !important;
+  box-shadow: none !important;
   border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-/* Login and Logout buttons - these have the secondary button class .st-emotion-cache-6ms01g
-   Must come BEFORE navigation button styles to establish base styling */
-#custom-sidebar button.st-emotion-cache-6ms01g,
-#custom-sidebar button[kind="secondary"],
-#custom-sidebar .stButton > button.st-emotion-cache-6ms01g,
-#custom-sidebar .stButton > button[kind="secondary"] {
-  background: var(--color-card, #ffffff) !important;
-  background-color: var(--color-card, #ffffff) !important;
-  background-image: none !important;
-  /* color: var(--color-foreground, #111) !important; */
-  border: 1px solid var(--color-border, rgba(0,0,0,0.06)) !important;
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: var(--color-border, rgba(0,0,0,0.06)) !important;
-  box-shadow: none !important;
-  font-weight: 600 !important;
+  transition: background 120ms ease, border-color 150ms ease !important;
   padding: 8px 12px !important;
   border-radius: 8px !important;
-  transition: none !important;
   width: 100% !important;
-  margin: 0 0 6px 0 !important;
+  font-weight: 400 !important;
 }
 
-/* Maintain Login/Logout styling on all states */
-#custom-sidebar button.st-emotion-cache-6ms01g:hover,
-#custom-sidebar button.st-emotion-cache-6ms01g:focus,
-#custom-sidebar button.st-emotion-cache-6ms01g:active,
-#custom-sidebar button[kind="secondary"]:hover,
-#custom-sidebar button[kind="secondary"]:focus,
-#custom-sidebar button[kind="secondary"]:active,
-#custom-sidebar .stButton > button.st-emotion-cache-6ms01g:hover,
-#custom-sidebar .stButton > button.st-emotion-cache-6ms01g:focus,
-#custom-sidebar .stButton > button.st-emotion-cache-6ms01g:active,
-#custom-sidebar .stButton > button[kind="secondary"]:hover,
-#custom-sidebar .stButton > button[kind="secondary"]:focus,
-#custom-sidebar .stButton > button[kind="secondary"]:active {
-  background: var(--color-card, #ffffff) !important;
-  background-color: var(--color-card, #ffffff) !important;
-  border: 1px solid var(--color-border, rgba(0,0,0,0.06)) !important;
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: var(--color-border, rgba(0,0,0,0.06)) !important;
-  /* color: var(--color-foreground, #111) !important; */
+/* STEP 3: DEFAULT - White background for ALL buttons (Login/Logout base) */
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  color: #111111 !important;
+  font-weight: 600 !important;
 }
 
-/* Navigation buttons - All buttons with primary type that have the red-border class */
-#custom-sidebar button.st-emotion-cache-1krtkoa,
-#custom-sidebar button[kind="primary"],
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa,
-#custom-sidebar .stButton > button[kind="primary"] {
-  /* Remove ALL Streamlit defaults */
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:hover {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   outline: none !important;
   box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:focus,
+[data-testid="stSidebar"] .stButton > button:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:focus,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:active {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* STEP 4: OVERRIDE for type="primary" buttons - Gray background (selected nav) */
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
+[data-testid="stSidebar"] .stButton > button[data-baseweb="button"][kind="primary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primaryFormSubmit"] {
+  background: #f3f3f5 !important;
+  background-color: #f3f3f5 !important;
+  background-image: none !important;
   border: none !important;
-  border-width: 0 !important;
-  border-style: none !important;
-  
-  /* Transparent background by default */
+  color: #111111 !important;
+  font-weight: 600 !important;
+  text-align: left !important;
+}
+
+/* STEP 5: OVERRIDE for type="secondary" buttons - Transparent (unselected nav) */
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"],
+[data-testid="stSidebar"] .stButton > button[data-baseweb="button"][kind="secondary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"] {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
-  
-  /* Layout */
-  padding: 8px 8px !important;
-  width: 100% !important;
+  border: none !important;
+  color: #111111 !important;
+  font-weight: 400 !important;
   text-align: left !important;
-  border-radius: 8px !important;
-  margin: 0 0 6px 0 !important;
-  
-  /* Text */
-  /* color: var(--color-foreground, #111) !important; */
-  transition: background 120ms ease !important;
 }
 
-/* Remove focus-visible red outline from navigation buttons */
-#custom-sidebar button.st-emotion-cache-1krtkoa:focus-visible,
-#custom-sidebar button[kind="primary"]:focus-visible,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa:focus-visible,
-#custom-sidebar .stButton > button[kind="primary"]:focus-visible {
+[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:hover {
+  background: rgba(243, 243, 245, 0.5) !important;
+  background-color: rgba(243, 243, 245, 0.5) !important;
   outline: none !important;
-  border: none !important;
   box-shadow: none !important;
 }
 
-/* Hover state - light background for navigation buttons */
-#custom-sidebar button.st-emotion-cache-1krtkoa:hover,
-#custom-sidebar button.st-emotion-cache-1krtkoa:focus,
-#custom-sidebar button[kind="primary"]:hover,
-#custom-sidebar button[kind="primary"]:focus,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa:hover,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa:focus,
-#custom-sidebar .stButton > button[kind="primary"]:hover,
-#custom-sidebar .stButton > button[kind="primary"]:focus {
-  background: rgba(243, 243, 245, 0.5) !important;
-  background-color: rgba(243, 243, 245, 0.5) !important;
-  border: none !important;
-  border-width: 0 !important;
-}
-
-/* Active state (during click) - full background for navigation buttons */
-#custom-sidebar button.st-emotion-cache-1krtkoa:active,
-#custom-sidebar button[kind="primary"]:active,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa:active,
-#custom-sidebar .stButton > button[kind="primary"]:active {
+[data-testid="stSidebar"] .stButton > button[kind="secondary"]:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:active {
   background: #f3f3f5 !important;
   background-color: #f3f3f5 !important;
-  border: none !important;
-  border-width: 0 !important;
-  /* color: var(--color-foreground, #111) !important; */
 }
 
-/* Always-active class - persistent highlight from JavaScript */
-#custom-sidebar button.st-emotion-cache-1krtkoa.always-active,
-#custom-sidebar button[kind="primary"].always-active,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa.always-active,
-#custom-sidebar .stButton > button[kind="primary"].always-active {
+/* STEP 6: .always-active class for persistent selection */
+[data-testid="stSidebar"] .stButton > button.always-active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active {
   background: #f3f3f5 !important;
   background-color: #f3f3f5 !important;
   background-image: none !important;
-  /* color: var(--color-foreground, #111) !important; */
-  font-weight: 600 !important;
   border: none !important;
-  border-width: 0 !important;
-  box-shadow: none !important;
-}
-
-/* Maintain always-active across all states */
-#custom-sidebar button.st-emotion-cache-1krtkoa.always-active:hover,
-#custom-sidebar button.st-emotion-cache-1krtkoa.always-active:focus,
-#custom-sidebar button.st-emotion-cache-1krtkoa.always-active:active,
-#custom-sidebar button[kind="primary"].always-active:hover,
-#custom-sidebar button[kind="primary"].always-active:focus,
-#custom-sidebar button[kind="primary"].always-active:active,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa.always-active:hover,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa.always-active:focus,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa.always-active:active,
-#custom-sidebar .stButton > button[kind="primary"].always-active:hover,
-#custom-sidebar .stButton > button[kind="primary"].always-active:focus,
-#custom-sidebar .stButton > button[kind="primary"].always-active:active {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  color: var(--color-foreground, #111) !important;
+  color: #111111 !important;
   font-weight: 600 !important;
-  border: none !important;
-  border-width: 0 !important;
-}
-
-/* Child elements in always-active buttons */
-/* #custom-sidebar button.st-emotion-cache-1krtkoa.always-active *,
-#custom-sidebar button[kind="primary"].always-active *,
-#custom-sidebar .stButton > button.st-emotion-cache-1krtkoa.always-active *,
-#custom-sidebar .stButton > button[kind="primary"].always-active * {
-  color: var(--color-foreground, #111) !important;
-  fill: var(--color-foreground, #111) !important;
-} */
-
-/* Button styles: Global default for buttons OUTSIDE the sidebar only.
-   Sidebar buttons are styled above with higher specificity. */
-.stApp:not(:has(#custom-sidebar)) .stButton > button,
-body:not(:has(#custom-sidebar)) .stButton > button {
-  padding: 10px 14px;
-  background: transparent !important;
-  color: var(--color-foreground, #111) !important;
-  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
-}
-.stApp:not(:has(#custom-sidebar)) .stButton > button:hover,
-body:not(:has(#custom-sidebar)) .stButton > button:hover {
-  background: rgba(243, 243, 245, 0.3) !important;
-  /* color: var(--color-foreground, #111) !important; */
-  opacity: 1 !important;
-}
-
-/* Remove old redundant exception rules - now handled by :nth-of-type selectors above */
-
-#custom-sidebar .sidebar-nav { display: flex; flex-direction: column; gap: 0; }
-#custom-sidebar .nav-button { margin: 0; padding: 0; }
-#custom-sidebar .sidebar-nav .nav-item.active {
-  background: transparent !important;
-  /* color: var(--color-foreground, #111) !important; */
-  font-weight: 600;
-}
-
-/* Remove focus rings and validation outlines that can create a red
-   band around inputs on some browsers. We still keep a subtle inner
-   border for affordance. */
-#custom-sidebar input:focus,
-#custom-sidebar input:focus-visible,
-#custom-sidebar textarea:focus,
-#custom-sidebar select:focus {
   outline: none !important;
   box-shadow: none !important;
-  border-color: rgba(0,0,0,0.12) !important;
 }
 
-/* Ensure sidebar buttons use dark text on light backgrounds so they
-   remain legible without relying on dark fills. */
-/* #custom-sidebar .stButton > button,
-#custom-sidebar .stButton > button * {
-  color: var(--color-foreground, #111) !important;
-} */
+/* =============================================================================
+   LAYOUT STYLES
+   ============================================================================= */
 
-/* Optional logo slot above the title — add an <img class="sidebar-logo"> inside
-   the `#custom-sidebar` before the <h2>` if you want a logo to occupy the
-   top area. This helps when you intentionally want a visual element to sit
-   above the title instead of seeing unexpected gaps. */
-#custom-sidebar .sidebar-logo {
-  display: block;
-  width: 56px;
-  height: auto;
-  margin: 0 0 8px 0;
+/* Sidebar container */
+[data-testid="stSidebar"] {
+  padding: 0.12rem 0.5rem 0.4rem 0.5rem;
+  background: #ffffff;
+  color: #000000;
 }
 
-/* Defensive reset for any top-of-page banner or injected header that
-   appears in dark mode on some machines. Keep this scoped to the
-   Streamlit app root so we don't touch the React preview assets. */
+/* Hide Streamlit's default navigation */
+[data-testid="stSidebarNav"]:not(:has(#custom-sidebar)),
+[data-testid="stSidebarNavItems"]:not(:has(#custom-sidebar)) {
+  display: none !important;
+}
+
+/* Prevent dark bands at top */
+[data-testid="stSidebar"] > *:first-child,
+#custom-sidebar > *:first-child,
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] > div > div {
+  background: transparent !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Sidebar title */
+#custom-sidebar h2 {
+  margin: 0 0 0.25rem 0;
+  padding: 0.08rem 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-foreground);
+  background: transparent;
+}
+
+/* Horizontal rules */
+#custom-sidebar hr {
+  margin: 0.3rem 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Profile card */
+.profile-card {
+  background: var(--color-card);
+  color: #000000;
+  border-radius: 6px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
+  margin-bottom: 8px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+.profile-top {
+  color: #6b6b6b;
+  font-size: 13px;
+}
+
+.profile-name {
+  font-weight: 600;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  color: #111111;
+}
+
+.profile-av {
+  color: #7b7b7b;
+  font-size: 13px;
+}
+
+/* =============================================================================
+   UTILITY CLASSES
+   ============================================================================= */
+
+/* Prevent dark mode interference on main app */
 .stApp > *:first-child,
 .stApp header,
 .stApp > div[role="banner"],
@@ -399,43 +327,11 @@ body:not(:has(#custom-sidebar)) .stButton > button:hover {
   padding-top: 0 !important;
 }
 
-.profile-top { color: var(--color-muted-foreground, #6b6b6b); font-size: 13px; }
-.profile-name { font-weight: 600; margin-top: 6px; margin-bottom: 2px; }
-.profile-av { color: var(--color-muted-foreground, #7b7b7b); font-size: 13px; }
-
-.sidebar-nav { display: flex; flex-direction: column; gap: 8px; }
-.sidebar-nav a, .sidebar-nav .nav-item {
-  display: inline-block;
-  padding: 8px 12px;
-  border-radius: 12px;
-  text-decoration: none;
-  color: inherit;
-  background: transparent;
-}
-.sidebar-nav .nav-item.active {
-  /* Active nav uses a light accent rather than a dark band */
-  background: var(--color-accent, #f3f3f5);
-  /* color: var(--color-foreground, #111); */
-}
-
-/* Small utility for content preview cards used on preview page */
-.preview-card {
-  background: var(--color-card, #fff);
-  border-radius: calc(var(--radius, 0.625rem));
-  padding: 16px;
-  box-shadow: 0 1px 4px rgba(2,6,23,0.06);
-  margin-bottom: 12px;
-}
-
-/* Final safety: allow native number inputs to use the browser/OS
-   default appearance so they render dark in OS dark mode. This avoids
-   our earlier card-like background (#f3f3f5) being applied and hiding
-   the constant grey placeholder. */
+/* Number input fallback for OS dark mode */
 .st-emotion-cache-1weic72 {
   display: inline-block;
   background: revert;
   color: revert;
   -webkit-appearance: auto;
   appearance: auto;
-  forced-color-adjust: auto;
 }

@@ -28,8 +28,11 @@ html, body, .stApp {
   margin-bottom: 0.5rem;
 }
 
-/* Buttons: map primary/secondary look using tokens */
-.stButton > button {
+/* Buttons: map primary/secondary look using tokens
+   COMPLETELY EXCLUDE sidebar - target only main content area */
+main .stButton > button,
+.stApp > div:not([data-testid="stSidebar"]) .stButton > button,
+div[data-testid="stAppViewContainer"] .stButton > button {
   border-radius: calc(var(--ui-radius));
   padding: 0.5rem 0.75rem;
   background: var(--color-primary, #030213);
@@ -37,10 +40,12 @@ html, body, .stApp {
   box-shadow: none;
 }
 
-/* Secondary-looking buttons (when Streamlit marks them differently) */
-.stButton[role] > button[aria-pressed="false"] {
+/* Secondary-looking buttons
+   EXCLUDE sidebar completely */
+main .stButton[role] > button[aria-pressed="false"],
+.stApp > div:not([data-testid="stSidebar"]) .stButton[role] > button[aria-pressed="false"],
+div[data-testid="stAppViewContainer"] .stButton[role] > button[aria-pressed="false"] {
   background: transparent;
-  /* color: var(--color-foreground, #111); */
 }
 
 /* Inputs: text, number, textarea */
