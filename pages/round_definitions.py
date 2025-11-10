@@ -1,4 +1,3 @@
-"""Round Definitions Page"""
 import streamlit as st
 from data_rounds import list_rounds, list_ranges
 
@@ -74,4 +73,3 @@ def show_round_definitions():
             """,
             unsafe_allow_html=True
         )
-

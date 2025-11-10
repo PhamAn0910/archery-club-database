@@ -1,11 +1,11 @@
 """Recorder Approval (DB-backed)
 
-This page lists sessions entered into club competitions / championships and
-lets recorders edit arrow values (6 arrows per end), change status, and
-confirm sessions. All edits persist to the archery_db via db_core.
+This page lists sessions entered into club competitions and lets recorders 
+edit arrow values (6 arrows per end), change status, and confirm sessions. 
+All edits persist to the archery_db via db_core.
 
 Features implemented:
-- Filter by competition (club competitions and championships) by name.
+- Filter by competition or show unassigned sessions.
 - Clickable AgGrid table showing AV number, round, shoot date, status, and total score.
 - Click on a row to select it, then use action buttons:
   - "📊 Edit Score" button opens score editor with:
@@ -23,6 +23,7 @@ Features implemented:
   - "✖ Clear Selection" button clears the selection
 - Status changes create audit trail.
 - Editing protections: Final/Confirmed scores locked after competition end date.
+- Shows all available competitions and all club members with their scores.
 """
 
 import datetime
@@ -85,8 +86,8 @@ def _score_from_arrow(a: str) -> int:
 
 def _build_av_number_map(sessions: List[Dict]) -> Dict[int, str]:
     """
-    Build a mapping from member_id to AV number by inspecting the club_member
-    table for an AV-related column. Falls back to member ID if not found.
+    Build a mapping from member_id to AV number using the known av_number column.
+    Falls back to member ID if data is unavailable.
     """
     member_ids = list({s['member_id'] for s in sessions})
     member_av_map: Dict[int, str] = {}
@@ -95,28 +96,15 @@ def _build_av_number_map(sessions: List[Dict]) -> Dict[int, str]:
         return member_av_map
     
     try:
-        # Inspect club_member columns for a likely AV column name
-        cols = fetch_all(
-            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
-            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'club_member' "
-            "AND COLUMN_NAME IN ('av_number','av','av_no','member_no','membership_no')"
+        # Use the known av_number column directly from the schema
+        rows = fetch_all(
+            "SELECT id, av_number FROM club_member WHERE id IN :ids",
+            params={'ids': tuple(member_ids)}
         )
-        av_col = cols[0]['COLUMN_NAME'] if cols else None
-        
-        if av_col:
-            # Fetch AV values using the discovered column
-            rows = fetch_all(
-                f"SELECT id, {av_col} AS av FROM club_member WHERE id IN :ids",
-                params={'ids': tuple(member_ids)}
-            )
-            for r in rows:
-                member_av_map[r['id']] = str(r.get('av') or r['id'])
-        else:
-            # Fallback to member id string
-            for mid in member_ids:
-                member_av_map[mid] = str(mid)
+        for r in rows:
+            member_av_map[r['id']] = str(r['av_number'] or r['id'])
     except Exception:
-        # If inspection fails, use member IDs
+        # Fallback to member IDs if query fails
         for mid in member_ids:
             member_av_map[mid] = str(mid)
     
@@ -240,18 +228,21 @@ def _render_status_editor(session: Dict, comp_end: datetime.date):
             if st.button("Apply", key=f"apply_status_{session_id}"):
                 if new_status != status:
                     _update_session_status(session_id, status, new_status)
+                    st.success(f"Status updated from '{status}' to '{new_status}'")
+                    st.rerun()
+                    _update_session_status(session_id, status, new_status)
                     st.success(f"Status updated to {new_status}")
                     st.rerun()
 
 
-def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, comp_id: int):
+def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, comp_key: str):
     """
     Render bulk status change interface with filtering and preview.
     
     Args:
         sess_list: List of session dictionaries for the competition
         comp_end: Competition end date for protection logic
-        comp_id: Competition ID for unique keys
+        comp_key: Competition key (ID or 'unassigned') for unique keys
     """
     st.markdown("---")
     st.markdown("### 📋 Bulk Status Change")
@@ -267,20 +258,20 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
             "Filter by Current Status",
             options=['Preliminary', 'Final', 'Confirmed'],
             default=['Preliminary'],
-            key=f"bulk_current_status_{comp_id}"
+            key=f"bulk_current_status_{comp_key}"
         )
     
     with col_filter2:
         round_filter = st.multiselect(
             "Filter by Round",
             options=sorted(list(set(s['round_name'] for s in sess_list))),
-            key=f"bulk_round_{comp_id}"
+            key=f"bulk_round_{comp_key}"
         )
     
     with col_filter3:
         av_filter = st.text_input(
             "Filter by AV Number (partial match)",
-            key=f"bulk_av_{comp_id}"
+            key=f"bulk_av_{comp_key}"
         )
     
     # Apply filters
@@ -342,7 +333,7 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
         new_bulk_status = st.selectbox(
             "Change all filtered sessions to:",
             options=['Preliminary', 'Final', 'Confirmed'],
-            key=f"bulk_new_status_{comp_id}"
+            key=f"bulk_new_status_{comp_key}"
         )
     
     with col_action2:
@@ -350,7 +341,7 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
         st.write("")  # Spacing
         confirm_bulk = st.checkbox(
             "I confirm",
-            key=f"bulk_confirm_{comp_id}",
+            key=f"bulk_confirm_{comp_key}",
             help="Check this box to enable the Apply button"
         )
     
@@ -359,22 +350,22 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
         st.write("")  # Spacing
         if st.button(
             f"✓ Apply to {len(editable_sessions)} Session(s)",
-            key=f"bulk_apply_{comp_id}",
+            key=f"bulk_apply_{comp_key}",
             type="primary",
             disabled=not confirm_bulk,
             use_container_width=True
         ):
-            _execute_bulk_status_change(editable_sessions, new_bulk_status, comp_id)
+            _execute_bulk_status_change(editable_sessions, new_bulk_status, comp_key)
 
 
-def _execute_bulk_status_change(sessions: List[Dict], new_status: str, comp_id: int):
+def _execute_bulk_status_change(sessions: List[Dict], new_status: str, comp_key: str):
     """
     Execute bulk status change with progress tracking and error handling.
     
     Args:
         sessions: List of session dictionaries to update
         new_status: New status to apply ('Preliminary', 'Final', 'Confirmed')
-        comp_id: Competition ID for session state management
+        comp_key: Competition key for session state management
     """
     success_count = 0
     error_count = 0
@@ -427,7 +418,7 @@ def _execute_bulk_status_change(sessions: List[Dict], new_status: str, comp_id: 
     
     # Clear bulk editor state and rerun to refresh data
     if success_count > 0 or error_count > 0:
-        st.session_state.pop(f"show_bulk_{comp_id}", None)
+        st.session_state.pop(f"show_bulk_{comp_key}", None)
         st.balloons()
         st.rerun()
 
@@ -534,17 +525,16 @@ def show_recorder_approval():
     st.title("Score Approval")
     st.caption("Select a competition, click a session row to edit arrows and change status.")
     
-    # Fetch competitions that look like club comps or championships
+    # Fetch ALL competitions, sorted by start date (most recent first)
     competitions = fetch_all("""
         SELECT id, name, DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
                DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
         FROM competition
-        WHERE name LIKE :club OR name LIKE :champ
-        ORDER BY name
-    """, params={'club': '%Club%', 'champ': '%Championship%'})
+        ORDER BY start_date DESC, name
+    """)
     
     if not competitions:
-        st.info("No club competitions or championships found in the database.")
+        st.info("No competitions found in the database.")
         return
     
     comp_options = [f"{c['id']}: {c['name']}" for c in competitions]
@@ -554,54 +544,88 @@ def show_recorder_approval():
         default=comp_options
     )
     
-    if not selected:
-        st.info("Select at least one competition to proceed.")
+    # Option to show sessions not yet entered into competitions
+    show_unassigned = st.checkbox(
+        "Also show sessions not yet entered into any competition", 
+        value=False,
+        help="Show all sessions that haven't been linked to any competition yet"
+    )
+    
+    if not selected and not show_unassigned:
+        st.info("Select at least one competition or check 'Show unassigned sessions' to proceed.")
         return
     
-    selected_ids = [int(s.split(":", 1)[0]) for s in selected]
+    # Fetch sessions based on selection
+    sessions = []
     
-    # Load sessions that are entered into the selected competitions
-    sessions = fetch_all("""
-        SELECT s.id AS session_id, s.member_id, s.round_id,
-               DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
-               s.status, ce.competition_id, c.name AS competition_name,
-               DATE_FORMAT(c.end_date, '%Y-%m-%d') AS comp_end_date,
-               r.round_name
-        FROM session s
-        JOIN competition_entry ce ON ce.session_id = s.id
-        JOIN competition c ON c.id = ce.competition_id
-        JOIN round r ON r.id = s.round_id
-        WHERE ce.competition_id IN :ids
-        ORDER BY c.name, s.shoot_date
-    """, params={'ids': tuple(selected_ids)})
+    if selected:
+        selected_ids = [int(s.split(":", 1)[0]) for s in selected]
+        
+        # Load sessions that are entered into the selected competitions
+        comp_sessions = fetch_all("""
+            SELECT s.id AS session_id, s.member_id, s.round_id,
+                   DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
+                   s.status, ce.competition_id, c.name AS competition_name,
+                   DATE_FORMAT(c.end_date, '%Y-%m-%d') AS comp_end_date,
+                   r.round_name, cm.full_name AS member_name, cm.av_number
+            FROM session s
+            JOIN competition_entry ce ON ce.session_id = s.id
+            JOIN competition c ON c.id = ce.competition_id
+            JOIN round r ON r.id = s.round_id
+            JOIN club_member cm ON cm.id = s.member_id
+            WHERE ce.competition_id IN :ids
+            ORDER BY c.name, s.shoot_date, cm.full_name
+        """, params={'ids': tuple(selected_ids)})
+        sessions.extend(comp_sessions)
+    
+    if show_unassigned:
+        # Load sessions that are NOT entered into any competition
+        unassigned_sessions = fetch_all("""
+            SELECT s.id AS session_id, s.member_id, s.round_id,
+                   DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
+                   s.status, NULL AS competition_id, 'Unassigned' AS competition_name,
+                   NULL AS comp_end_date,
+                   r.round_name, cm.full_name AS member_name, cm.av_number
+            FROM session s
+            JOIN round r ON r.id = s.round_id
+            JOIN club_member cm ON cm.id = s.member_id
+            LEFT JOIN competition_entry ce ON ce.session_id = s.id
+            WHERE ce.session_id IS NULL
+            ORDER BY s.shoot_date DESC, cm.full_name
+        """)
+        sessions.extend(unassigned_sessions)
     
     if not sessions:
         st.info("No sessions found for the selected competitions.")
         return
     
-    # Convert RowMapping objects to dicts (SQLAlchemy returns immutable RowMapping)
+    # Convert RowMapping objects to dicts and ensure AV numbers are properly set
     sessions = [dict(s) for s in sessions]
     
-    # Build AV number map
-    av_map = _build_av_number_map(sessions)
-    
-    # Add AV numbers to sessions
+    # Ensure AV numbers are properly formatted (fallback to member ID if null)
     for s in sessions:
-        s['av_number'] = av_map.get(s['member_id'], str(s['member_id']))
+        if not s.get('av_number'):
+            s['av_number'] = f"ID{s['member_id']}"
     
-    # Group by competition id
-    sessions_by_comp: Dict[int, List[Dict]] = {}
+    # Group by competition id (unassigned sessions get grouped separately)
+    sessions_by_comp: Dict[str, List[Dict]] = {}
     for s in sessions:
-        comp_id = s['competition_id']
-        sessions_by_comp.setdefault(comp_id, []).append(s)
+        comp_key = s['competition_id'] if s['competition_id'] is not None else 'unassigned'
+        sessions_by_comp.setdefault(comp_key, []).append(s)
     
     st.markdown("---")
     
     # Per-competition listing
-    for comp_id, sess_list in sessions_by_comp.items():
-        comp = next((c for c in competitions if c['id'] == comp_id), None)
-        comp_name = comp['name'] if comp else str(comp_id)
-        comp_end = _parse_date(comp['end_date']) if comp else _today_date()
+    for comp_key, sess_list in sessions_by_comp.items():
+        if comp_key == 'unassigned':
+            comp_name = "🔄 Unassigned Sessions"
+            comp_end = _today_date()
+            comp_id = 'unassigned'
+        else:
+            comp = next((c for c in competitions if c['id'] == comp_key), None)
+            comp_name = comp['name'] if comp else str(comp_key)
+            comp_end = _parse_date(comp['end_date']) if comp else _today_date()
+            comp_id = comp_key
         
         st.markdown(f"## {comp_name} — ends {comp_end}")
         
@@ -722,7 +746,7 @@ def show_recorder_approval():
                     elif st.session_state.get(f"show_status_{comp_id}"):
                         _render_status_editor(selected_session, comp_end)
                     elif st.session_state.get(f"show_bulk_{comp_id}"):
-                        _render_bulk_status_editor(sess_list, comp_end, comp_id)
+                        _render_bulk_status_editor(sess_list, comp_end, str(comp_id))
         else:
             # Fallback: simple list (no AgGrid)
             st.info("AgGrid not available. Install streamlit-aggrid for enhanced table view.")

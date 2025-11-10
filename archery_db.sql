@@ -263,6 +263,32 @@ CREATE TABLE arrow (
 -- Links a single archer's session to an official competition,
 -- assigns a category, and "freezes" the score.
 -- -----------------------------------------------------
+CREATE TABLE competition_entry (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    competition_id INT NOT NULL,
+    category_id INT NOT NULL,
+    final_total SMALLINT NULL COMMENT 'The "frozen" total score, copied from the session at time of confirmation.',
+    rank_in_category TINYINT NULL COMMENT 'Final computed rank (1, 2, 3, etc.)',
+    
+    -- An archer's session can only be entered into a competition once
+    UNIQUE KEY uk_competition_session (competition_id, session_id),
+
+    -- Foreign Key constraints
+    CONSTRAINT fk_competition_entry_session
+        FOREIGN KEY (session_id) 
+        REFERENCES session(id) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_competition_entry_competition
+        FOREIGN KEY (competition_id) 
+        REFERENCES competition(id) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_competition_entry_category
+        FOREIGN KEY (category_id) 
+        REFERENCES category(id) 
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 -- -----------------------------------------------------
 -- 13. Table: session_audit
 -- Audit log for session status changes.

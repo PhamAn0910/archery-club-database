@@ -1,4 +1,3 @@
-"""Score Entry Page"""
 import streamlit as st
 from guards import require_archer
 
