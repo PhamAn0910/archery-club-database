@@ -128,6 +128,8 @@
 
 /* =============================================================================
    BUTTON STYLES - Proper cascade order to avoid conflicts
+   Order: STEP 1 (layout) → STEP 2 (base) → STEP 4 (primary nav) → 
+          STEP 5 (secondary nav) → STEP 6 (.always-active) → STEP 3 (auth buttons LAST to override)
    ============================================================================= */
 
 /* STEP 1: Reduce button container gaps */
@@ -154,38 +156,6 @@
 [data-testid="stSidebar"] .stButton > button:active {
   outline: none !important;
   box-shadow: none !important;
-}
-
-/* STEP 3: Login/Logout buttons (DEFAULT - no kind attribute)
-   Light gray background, dark text, subtle border */
-[data-testid="stSidebar"] .stButton > button:not([kind]),
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]) {
-  background: #e8e8ea !important;
-  background-color: #e8e8ea !important;
-  background-image: none !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  color: #111111 !important;
-  font-weight: 600 !important;
-}
-
-/* Login/Logout hover: Slightly lighter background */
-[data-testid="stSidebar"] .stButton > button:not([kind]):hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):hover {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  border-color: rgba(0, 0, 0, 0.12) !important;
-  color: #111111 !important;
-}
-
-/* Login/Logout focus/active: Keep same as default */
-[data-testid="stSidebar"] .stButton > button:not([kind]):focus,
-[data-testid="stSidebar"] .stButton > button:not([kind]):active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):focus,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):active {
-  background: #e8e8ea !important;
-  background-color: #e8e8ea !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  color: #111111 !important;
 }
 
 /* STEP 4: Navigation buttons with type="primary" - Gray background (selected) */
@@ -252,6 +222,39 @@
 [data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active:hover {
   background: #f3f3f5 !important;
   background-color: #f3f3f5 !important;
+  color: #111111 !important;
+}
+
+/* STEP 3: Login/Logout buttons - Target with .auth-button class (added by JavaScript)
+   PLACED LAST to override STEP 5's transparent background for secondary buttons
+   Light gray background, dark text, subtle border */
+[data-testid="stSidebar"] .stButton > button.auth-button,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button {
+  background: #e8e8ea !important;
+  background-color: #e8e8ea !important;
+  background-image: none !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #111111 !important;
+  font-weight: 600 !important;
+}
+
+/* Login/Logout hover: Slightly lighter background */
+[data-testid="stSidebar"] .stButton > button.auth-button:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:hover {
+  background: #f3f3f5 !important;
+  background-color: #f3f3f5 !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #111111 !important;
+}
+
+/* Login/Logout focus/active: Keep same as default */
+[data-testid="stSidebar"] .stButton > button.auth-button:focus,
+[data-testid="stSidebar"] .stButton > button.auth-button:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:focus,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:active {
+  background: #e8e8ea !important;
+  background-color: #e8e8ea !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
   color: #111111 !important;
 }
 

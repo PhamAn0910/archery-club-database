@@ -185,7 +185,7 @@ def _render_login_panel(auth: AuthState) -> None:
     # Render the login button outside of any form so it's not styled by
     # Streamlit's form submit variants (this helps avoid OS dark-mode visual
     # treatments on the submit control).
-    if st.button("Log in", use_container_width=True, key="ui.login_submit"):
+    if st.button("Log in", use_container_width=True, key="ui.login_submit", type="secondary"):
         # Explicit None check first (clear, local validation). This avoids
         # catching unrelated exceptions and communicates intent.
         if member_id is None:
@@ -226,7 +226,7 @@ def _render_profile_panel(auth: AuthState) -> None:
     st.markdown(_profile_card_html(auth), unsafe_allow_html=True)
 
     # Logout button below the card. Keep event handling here (loose coupling)
-    if st.button("⤴ Logout", use_container_width=True):
+    if st.button("⤴ Logout", use_container_width=True, key="ui.logout_submit", type="secondary"):
         _reset_auth()
         st.rerun()
 
@@ -366,6 +366,15 @@ def render_sidebar() -> None:
                 const navButtons = allButtons.filter(btn => {
                   const text = btn.innerText || btn.textContent || '';
                   return !text.includes('Log in') && !text.includes('Logout');
+                });
+                
+                // Add auth-button class to Login/Logout buttons for CSS targeting
+                const authButtons = allButtons.filter(btn => {
+                  const text = btn.innerText || btn.textContent || '';
+                  return text.includes('Log in') || text.includes('Logout');
+                });
+                authButtons.forEach(btn => {
+                  btn.classList.add('auth-button');
                 });
                 
                 navButtons.forEach(btn => {
