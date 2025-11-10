@@ -572,6 +572,7 @@ INSERT INTO competition_entry (session_id, competition_id, category_id, final_to
          division_id = (SELECT id FROM division WHERE bow_type_code = 'L')),
      710,
      1);   -- 1st place in longbow category
+     
 
 -- =====================================================
 -- End of Data Creation Script
