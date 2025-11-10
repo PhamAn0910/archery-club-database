@@ -127,7 +127,7 @@
 }
 
 /* =============================================================================
-   BUTTON STYLES - NUCLEAR OPTION: Force override with !important everywhere
+   BUTTON STYLES - Proper cascade order to avoid conflicts
    ============================================================================= */
 
 /* STEP 1: Reduce button container gaps */
@@ -137,56 +137,60 @@
   padding: 0 !important;
 }
 
-/* STEP 2: ALL sidebar buttons - force base styles */
-[data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button,
-[data-testid="stSidebar"] button {
-  color: #ffffff !important;
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-  transition: background 120ms ease, border-color 150ms ease !important;
-  padding: 8px 12px !important;
-  /* border-radius: 8px !important; */
-  width: 100% !important;
-  font-weight: 400 !important;
-}
-
-/* STEP 3: DEFAULT - White background for ALL buttons (Login/Logout base) */
+/* STEP 2: Base styles for ALL sidebar buttons - ONLY non-color properties */
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: background 120ms ease, border-color 150ms ease !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  width: 100% !important;
+}
+
+/* Remove red focus ring on ALL pseudo-states */
+[data-testid="stSidebar"] .stButton > button:focus,
+[data-testid="stSidebar"] .stButton > button:focus-visible,
+[data-testid="stSidebar"] .stButton > button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* STEP 3: Login/Logout buttons (DEFAULT - no kind attribute)
+   Light gray background, dark text, subtle border */
+[data-testid="stSidebar"] .stButton > button:not([kind]),
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]) {
+  background: #e8e8ea !important;
+  background-color: #e8e8ea !important;
   background-image: none !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
   color: #111111 !important;
   font-weight: 600 !important;
 }
 
-[data-testid="stSidebar"] .stButton > button:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:hover {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
+/* Login/Logout hover: Slightly lighter background */
+[data-testid="stSidebar"] .stButton > button:not([kind]):hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):hover {
+  background: #f3f3f5 !important;
+  background-color: #f3f3f5 !important;
   border-color: rgba(0, 0, 0, 0.12) !important;
-  outline: none !important;
-  box-shadow: none !important;
+  color: #111111 !important;
 }
 
-[data-testid="stSidebar"] .stButton > button:focus,
-[data-testid="stSidebar"] .stButton > button:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:focus,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button:active {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
-  outline: none !important;
-  box-shadow: none !important;
+/* Login/Logout focus/active: Keep same as default */
+[data-testid="stSidebar"] .stButton > button:not([kind]):focus,
+[data-testid="stSidebar"] .stButton > button:not([kind]):active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):focus,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button:not([kind]):active {
+  background: #e8e8ea !important;
+  background-color: #e8e8ea !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #111111 !important;
 }
 
-/* STEP 4: OVERRIDE for type="primary" buttons - Gray background (selected nav) */
+/* STEP 4: Navigation buttons with type="primary" - Gray background (selected) */
 [data-testid="stSidebar"] .stButton > button[kind="primary"],
 [data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
-[data-testid="stSidebar"] .stButton > button[data-baseweb="button"][kind="primary"],
 [data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primary"],
 [data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primaryFormSubmit"] {
   background: #f3f3f5 !important;
@@ -198,10 +202,11 @@
   text-align: left !important;
 }
 
-/* STEP 5: OVERRIDE for type="secondary" buttons - Transparent (unselected nav) */
+/* STEP 5: Navigation buttons with type="secondary" - Transparent (unselected) */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"],
-[data-testid="stSidebar"] .stButton > button[data-baseweb="button"][kind="secondary"],
-[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"] {
+[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"] {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
@@ -211,31 +216,27 @@
   text-align: left !important;
 }
 
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"] {
-
-  background-image: none !important;
-  border: none !important;
-  color: #111111 !important;
-  font-weight: 400 !important;
-  text-align: left !important;
-}
-
+/* Secondary hover: Light gray background */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:hover {
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:hover,
+[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"]:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"]:hover {
   background: rgba(243, 243, 245, 0.5) !important;
   background-color: rgba(243, 243, 245, 0.5) !important;
-  outline: none !important;
-  box-shadow: none !important;
+  color: #111111 !important;
 }
 
+/* Secondary active: Full gray background */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"]:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:active {
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:active,
+[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"]:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"]:active {
   background: #f3f3f5 !important;
   background-color: #f3f3f5 !important;
+  color: #111111 !important;
 }
 
-/* STEP 6: .always-active class for persistent selection */
+/* STEP 6: .always-active class for persistent selection (JavaScript-added) */
 [data-testid="stSidebar"] .stButton > button.always-active,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active {
   background: #f3f3f5 !important;
@@ -244,8 +245,14 @@
   border: none !important;
   color: #111111 !important;
   font-weight: 600 !important;
-  outline: none !important;
-  box-shadow: none !important;
+}
+
+/* Always-active maintains appearance on hover */
+[data-testid="stSidebar"] .stButton > button.always-active:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active:hover {
+  background: #f3f3f5 !important;
+  background-color: #f3f3f5 !important;
+  color: #111111 !important;
 }
 
 /* =============================================================================
