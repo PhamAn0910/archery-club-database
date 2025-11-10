@@ -320,70 +320,6 @@ def render_sidebar() -> None:
         # is controlled entirely via CSS.
         st.markdown('<div id="custom-sidebar">', unsafe_allow_html=True)
 
-        # Client-side behavior: mark the most recently clicked sidebar button
-        # with an 'always-active' class so it remains highlighted even while
-        # Streamlit processes the click. Remove the class from other buttons.
-        # This provides instant visual feedback without changing the app logic.
-        components.html(
-            """
-            <script>
-            (function(){
-              const attachButtonListeners = () => {
-                // Access parent window document (we're in an iframe)
-                const parentDoc = window.parent.document;
-                const sidebarContainer = parentDoc.getElementById('custom-sidebar');
-                if(!sidebarContainer) return false;
-                
-                // Get ALL buttons in sidebar
-                const allButtons = Array.from(sidebarContainer.querySelectorAll('.stButton > button'));
-                
-                if(allButtons.length === 0) return false;
-                
-                // Filter to navigation buttons (exclude Login/Logout)
-                const navButtons = allButtons.filter(btn => {
-                  const text = btn.innerText || btn.textContent || '';
-                  return !text.includes('Log in') && !text.includes('Logout');
-                });
-                
-                // Add auth-button class to Login/Logout buttons for CSS targeting
-                const authButtons = allButtons.filter(btn => {
-                  const text = btn.innerText || btn.textContent || '';
-                  return text.includes('Log in') || text.includes('Logout');
-                });
-                authButtons.forEach(btn => {
-                  btn.classList.add('auth-button');
-                });
-                
-                navButtons.forEach(btn => {
-                  if(btn.dataset._alwaysActiveAttached === '1') return;
-                  btn.dataset._alwaysActiveAttached = '1';
-                  
-                  btn.addEventListener('click', (e) => {
-                    navButtons.forEach(b => b.classList.remove('always-active'));
-                    e.currentTarget.classList.add('always-active');
-                  });
-                  
-                  btn.addEventListener('keydown', (e) => {
-                    if(e.key === 'Enter' || e.key === ' ') {
-                      navButtons.forEach(b => b.classList.remove('always-active'));
-                      btn.classList.add('always-active');
-                    }
-                  });
-                });
-                return true;
-              };
-              
-              const retryInterval = setInterval(() => {
-                if(attachButtonListeners()) clearInterval(retryInterval);
-              }, 200);
-              
-              setTimeout(() => clearInterval(retryInterval), 5000);
-            })();
-            </script>
-            """,
-            height=0,
-        )
-
         st.markdown("<h2>Archery Club</h2>", unsafe_allow_html=True)
         st.markdown("---")
 
@@ -402,3 +338,95 @@ def render_sidebar() -> None:
         st.markdown("---")
         st.caption("©2025 Powerpuff Girls Group")
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Use MutationObserver with more aggressive button detection
+        components.html(
+            """
+            <script>
+            (function(){
+              console.log('🚀 Script started');
+              
+              const parentDoc = window.parent.document;
+              console.log('📄 Parent document:', parentDoc ? 'FOUND' : 'NOT FOUND');
+              
+              function styleAuthButtons() {
+                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+                if (!sidebar) {
+                  console.log('⚠️ Sidebar not found');
+                  return 0;
+                }
+                
+                // Find ALL buttons in sidebar (not just .stButton > button)
+                const buttons = Array.from(sidebar.querySelectorAll('button'));
+                console.log('🔍 Total buttons found:', buttons.length);
+                
+                buttons.forEach((btn, i) => {
+                  console.log(`  Button ${i}:`, (btn.innerText || '').substring(0, 30), '| kind:', btn.getAttribute('kind'));
+                });
+                
+                const authButtons = buttons.filter(btn => {
+                  const text = (btn.innerText || '').trim();
+                  return text === 'Log in' || text.includes('Logout');
+                });
+                
+                console.log('🔐 Auth buttons found:', authButtons.length);
+                
+                authButtons.forEach(btn => {
+                  const text = btn.innerText.trim();
+                  console.log('🎨 Styling:', text);
+                  
+                  btn.classList.add('auth-button');
+                  
+                  // FORCE style with setAttribute
+                  btn.setAttribute('style', 
+                    'background: #e8e8ea !important; ' +
+                    'background-color: #e8e8ea !important; ' +
+                    'border: 1px solid rgba(0, 0, 0, 0.08) !important; ' +
+                    'color: #111111 !important; ' +
+                    'font-weight: 600 !important; ' +
+                    'padding: 8px 12px !important; ' +
+                    'border-radius: 8px !important;'
+                  );
+                  
+                  const computedBg = window.getComputedStyle(btn).backgroundColor;
+                  console.log('✅ Applied! Computed bg:', computedBg);
+                });
+                
+                return authButtons.length;
+              }
+              
+              // Multiple attempts with increasing delays
+              const delays = [100, 300, 500, 800, 1200, 2000, 3000];
+              delays.forEach(delay => {
+                setTimeout(() => {
+                  console.log(`⏱️ Attempt at ${delay}ms`);
+                  const count = styleAuthButtons();
+                  if (count > 0) {
+                    console.log(`🎉 SUCCESS at ${delay}ms! Styled ${count} buttons`);
+                  }
+                }, delay);
+              });
+              
+              // MutationObserver on entire sidebar
+              const observer = new MutationObserver((mutations) => {
+                console.log('🔄 Mutation detected, re-checking...');
+                styleAuthButtons();
+              });
+              
+              setTimeout(() => {
+                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+                if (sidebar) {
+                  observer.observe(sidebar, { 
+                    childList: true, 
+                    subtree: true,
+                    attributes: false
+                  });
+                  console.log('👀 Observer active');
+                }
+              }, 50);
+              
+            })();
+            </script>
+            """,
+            height=0,
+        )
