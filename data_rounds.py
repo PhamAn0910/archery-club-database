@@ -2,9 +2,8 @@ from __future__ import annotations
 import streamlit as st
 from db_core import fetch_all, fetch_one, exec_sql
 
-
 # ==========================================================
-#  READ FUNCTIONS (unchanged)
+#  READ FUNCTIONS
 # ==========================================================
 
 @st.cache_data(ttl=60)
@@ -35,7 +34,7 @@ def list_ranges(round_id: int):
 
 
 # ==========================================================
-#  WRITE FUNCTIONS (new)
+#  WRITE FUNCTIONS
 # ==========================================================
 
 def create_session(member_id: int, round_id: int, shoot_date: str, status: str = "Preliminary") -> int:
@@ -51,36 +50,58 @@ def create_session(member_id: int, round_id: int, shoot_date: str, status: str =
 
     # Fetch the new session ID
     row = fetch_one(
-        "SELECT MAX(id) AS session_id FROM session WHERE member_id = :mid AND round_id = :rid",
+        "SELECT id FROM session WHERE member_id = :mid AND round_id = :rid ORDER BY id DESC LIMIT 1",
         {"mid": member_id, "rid": round_id},
     )
-    return row["session_id"] if row else None
+    return row["id"] if row else None
 
 
 def save_end(session_id: int, round_range_id: int, end_no: int, arrow_values: list[str]):
     """
-    Save a completed end and its six arrows.
-    - session_id: current session
-    - round_range_id: distance/face being shot
-    - end_no: which end number (1–6)
-    - arrow_values: list like ['10','9','8','X','M','7']
+    Save a completed end and its six arrows safely.
+    Avoids duplicate inserts if rerun or all-M arrows are repeated.
     """
 
-    # 1 - Insert End
-    sql_end = """
+    # ------------------------------------------------------
+    # 1. Insert End if not already exists
+    # ------------------------------------------------------
+    sql_insert_end = """
         INSERT INTO `end` (session_id, round_range_id, end_no)
-        VALUES (:sid, :rrid, :end_no)
+        SELECT :sid, :rrid, :end_no
+        WHERE NOT EXISTS (
+            SELECT 1 FROM `end`
+            WHERE session_id = :sid AND round_range_id = :rrid AND end_no = :end_no
+        );
     """
-    exec_sql(sql_end, {"sid": session_id, "rrid": round_range_id, "end_no": end_no})
+    exec_sql(sql_insert_end, {"sid": session_id, "rrid": round_range_id, "end_no": end_no})
 
-    # 2️ - Fetch the new End ID
+    # ------------------------------------------------------
+    # 2. Retrieve end_id for this specific end
+    # ------------------------------------------------------
     end_row = fetch_one(
-        "SELECT MAX(id) AS end_id FROM `end` WHERE session_id = :sid",
-        {"sid": session_id},
+        """
+        SELECT id FROM `end`
+        WHERE session_id = :sid AND round_range_id = :rrid AND end_no = :end_no
+        LIMIT 1
+        """,
+        {"sid": session_id, "rrid": round_range_id, "end_no": end_no},
     )
-    end_id = end_row["end_id"]
+    if not end_row:
+        st.error("Failed to retrieve end_id after insertion.")
+        return
+    end_id = end_row["id"]
 
-    # 3️ - Insert all 6 arrows
+    # ------------------------------------------------------
+    # 3. Skip insertion if arrows already recorded
+    # ------------------------------------------------------
+    existing = fetch_one("SELECT COUNT(*) AS c FROM arrow WHERE end_id = :eid", {"eid": end_id})
+    if existing["c"] > 0:
+        # Already saved (e.g., rerun scenario)
+        return
+
+    # ------------------------------------------------------
+    # 4. Insert all 6 arrows safely
+    # ------------------------------------------------------
     for i, token in enumerate(arrow_values, start=1):
         sql_arrow = """
             INSERT INTO arrow (end_id, arrow_no, arrow_value)
@@ -91,7 +112,7 @@ def save_end(session_id: int, round_range_id: int, end_no: int, arrow_values: li
 
 def finalize_session(session_id: int):
     """
-    Optionally mark a session as 'Confirmed' after all ends are recorded.
+    Mark a session as 'Confirmed' after all ends are recorded.
     """
     sql = "UPDATE session SET status = 'Confirmed' WHERE id = :sid"
     exec_sql(sql, {"sid": session_id})
