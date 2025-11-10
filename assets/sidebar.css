@@ -227,7 +227,12 @@
 
 /* STEP 3: Login/Logout buttons - Target with .auth-button class (added by JavaScript)
    PLACED LAST to override STEP 5's transparent background for secondary buttons
-   Light gray background, dark text, subtle border */
+   Light gray background, dark text, subtle border
+   Higher specificity by including button element and [kind] attribute */
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"],
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"],
 [data-testid="stSidebar"] .stButton > button.auth-button,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button {
   background: #e8e8ea !important;
@@ -238,7 +243,11 @@
   font-weight: 600 !important;
 }
 
-/* Login/Logout hover: Slightly lighter background */
+/* Login/Logout hover: Slightly lighter background - MUST override STEP 5 hover */
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:hover,
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:hover,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:hover,
 [data-testid="stSidebar"] .stButton > button.auth-button:hover,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:hover {
   background: #f3f3f5 !important;
@@ -248,6 +257,14 @@
 }
 
 /* Login/Logout focus/active: Keep same as default */
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:focus,
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:active,
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:focus,
+[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:focus,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:active,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:focus,
+[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:active,
 [data-testid="stSidebar"] .stButton > button.auth-button:focus,
 [data-testid="stSidebar"] .stButton > button.auth-button:active,
 [data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:focus,

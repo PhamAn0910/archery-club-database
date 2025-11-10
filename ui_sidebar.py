@@ -329,36 +329,13 @@ def render_sidebar() -> None:
             <script>
             (function(){
               const attachButtonListeners = () => {
-                const sidebarContainer = document.getElementById('custom-sidebar');
+                // Access parent window document (we're in an iframe)
+                const parentDoc = window.parent.document;
+                const sidebarContainer = parentDoc.getElementById('custom-sidebar');
                 if(!sidebarContainer) return false;
                 
                 // Get ALL buttons in sidebar
                 const allButtons = Array.from(sidebarContainer.querySelectorAll('.stButton > button'));
-                
-                // DEBUG: Create visible debug output in the page
-                const debugDiv = document.createElement('div');
-                debugDiv.id = 'button-debug-output';
-                debugDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:#fff;border:2px solid red;padding:10px;max-width:400px;max-height:80vh;overflow:auto;z-index:9999;font-size:10px;font-family:monospace;';
-                debugDiv.innerHTML = '<strong>BUTTON DEBUG (Total: ' + allButtons.length + ')</strong><br><br>';
-                
-                allButtons.forEach((btn, i) => {
-                  const text = (btn.innerText || '').trim();
-                  const kind = btn.getAttribute('kind');
-                  const dataBaseweb = btn.getAttribute('data-baseweb');
-                  const bgColor = window.getComputedStyle(btn).backgroundColor;
-                  const border = window.getComputedStyle(btn).border;
-                  
-                  debugDiv.innerHTML += `<div style="margin-bottom:10px;padding:5px;background:#f0f0f0;">
-                    <b>Button ${i}: "${text}"</b><br>
-                    kind: ${kind}<br>
-                    data-baseweb: ${dataBaseweb}<br>
-                    class: ${btn.className}<br>
-                    bg-color: ${bgColor}<br>
-                    border: ${border}
-                  </div>`;
-                });
-                
-                document.body.appendChild(debugDiv);
                 
                 if(allButtons.length === 0) return false;
                 
@@ -403,26 +380,6 @@ def render_sidebar() -> None:
               setTimeout(() => clearInterval(retryInterval), 5000);
             })();
             </script>
-                  
-                  // Keyboard handler
-                  btn.addEventListener('keydown', (e) => {
-                    if(e.key === 'Enter' || e.key === ' ') {
-                      navButtons.forEach(b => b.classList.remove('always-active'));
-                      btn.classList.add('always-active');
-                    }
-                  });
-                });
-                return true;
-              };
-              
-              // Retry until buttons are found
-              const retryInterval = setInterval(() => {
-                if(attachButtonListeners()) clearInterval(retryInterval);
-              }, 200);
-              
-              setTimeout(() => clearInterval(retryInterval), 5000);
-            })();
-            </script>
             """,
             height=0,
         )
@@ -445,47 +402,3 @@ def render_sidebar() -> None:
         st.markdown("---")
         st.caption("©2025 Powerpuff Girls Group")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        # DEBUG using components.html instead of st.markdown
-        components.html("""
-            <script>
-            (function() {
-                const debug = document.createElement('div');
-                debug.id = 'button-debug-box';
-                debug.style.cssText = 'position:fixed;top:10px;right:10px;background:yellow;border:3px solid red;padding:15px;z-index:99999;font-family:monospace;font-size:11px;max-width:450px;max-height:600px;overflow:auto;';
-                debug.innerHTML = '<b>DEBUG SCRIPT RUNNING...</b><br><br>';
-                document.body.appendChild(debug);
-                
-                setTimeout(() => {
-                    const sidebar = document.querySelector('[data-testid="stSidebar"]');
-                    const customSidebar = document.getElementById('custom-sidebar');
-                    
-                    debug.innerHTML += sidebar ? '✓ Found [data-testid="stSidebar"]<br>' : '✗ NO stSidebar<br>';
-                    debug.innerHTML += customSidebar ? '✓ Found #custom-sidebar<br>' : '✗ NO #custom-sidebar<br>';
-                    
-                    const allButtons = document.querySelectorAll('button');
-                    debug.innerHTML += `<br>Total buttons in page: ${allButtons.length}<br><br>`;
-                    
-                    // Find buttons in sidebar
-                    const sidebarButtons = sidebar ? Array.from(sidebar.querySelectorAll('button')) : [];
-                    debug.innerHTML += `Buttons in sidebar: ${sidebarButtons.length}<br><hr>`;
-                    
-                    sidebarButtons.forEach((btn, i) => {
-                        const text = (btn.innerText || '').substring(0, 25);
-                        const kind = btn.getAttribute('kind') || 'null';
-                        const dataBaseweb = btn.getAttribute('data-baseweb') || 'null';
-                        const className = btn.className.substring(0, 50);
-                        const bg = window.getComputedStyle(btn).backgroundColor;
-                        
-                        debug.innerHTML += `<div style="background:#f0f0f0;margin:5px 0;padding:5px;">
-                            <b>${i}: "${text}"</b><br>
-                            kind: ${kind}<br>
-                            data-baseweb: ${dataBaseweb}<br>
-                            class: ${className}<br>
-                            bg: ${bg}
-                        </div>`;
-                    });
-                }, 2000);
-            })();
-            </script>
-        """, height=0)
