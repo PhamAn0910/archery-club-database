@@ -1,13 +1,64 @@
-"""Score History Page – Final Version with Correct Classification"""
+"""Score History Page – Final Polished Version (No Lines, Larger Text)"""
 import streamlit as st
 from guards import require_archer
-from db_core import fetch_all, exec_sql
+from db_core import fetch_all
 
 
+# ==========================================================
+# HELPER FUNCTION – Display a list of sessions
+# ==========================================================
+def show_sessions(records, label, caption):
+    if not records:
+        st.info(f"No sessions under {label}.")
+        return
+    for s in records:
+        # light spacing between sessions instead of lines
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([3, 2, 2])
+        with col1:
+            st.markdown(
+                f"<h4 style='font-size:22px; margin-bottom:0'>{s['round_name']} — {s['shoot_date']}</h4>",
+                unsafe_allow_html=True,
+            )
+        with col2:
+            st.markdown(f"<b>Status:</b> {label}", unsafe_allow_html=True)
+        with col3:
+            st.markdown(
+                f"<b>Ends:</b> {s['ends_recorded']} / {s['total_ends']}",
+                unsafe_allow_html=True,
+            )
+        st.caption(caption)
+
+
+# ==========================================================
+# MAIN PAGE FUNCTION
+# ==========================================================
 @require_archer
 def show_score_history():
+    # ------------------------------------------------------
+    # GLOBAL FONT STYLING (applies to entire page)
+    # ------------------------------------------------------
+    st.markdown(
+        """
+        <style>
+        html, body, [class*="css"] {
+            font-size: 18px !important;
+        }
+        h1, h2, h3, h4 {
+            font-weight: 700;
+        }
+        [data-testid="stMarkdownContainer"] label,
+        .stRadio label,
+        .stTabs [role="tab"] {
+            font-size: 17px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title("📈 My Score History")
-    st.caption("View, resume, or manage your recorded sessions")
+    st.caption("View, resume, or review your recorded sessions")
 
     auth = st.session_state.get("auth")
     if not auth or not auth.get("logged_in"):
@@ -16,9 +67,9 @@ def show_score_history():
 
     member_id = auth["id"]
 
-    # ==========================================================
-    # FETCH ALL SESSIONS + FIXED COMPLETION INFO
-    # ==========================================================
+    # ======================================================
+    # FETCH ALL SESSIONS
+    # ======================================================
     sessions = fetch_all(
         """
         SELECT s.id AS session_id,
@@ -45,9 +96,9 @@ def show_score_history():
         st.info("No sessions recorded yet.")
         return
 
-    # ==========================================================
+    # ======================================================
     # CLASSIFY SESSIONS
-    # ==========================================================
+    # ======================================================
     unfinished, preliminary, final, confirmed = [], [], [], []
 
     for s in sessions:
@@ -65,98 +116,69 @@ def show_score_history():
             else:
                 preliminary.append(s)
 
-    # ==========================================================
-    # UI TABS
-    # ==========================================================
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "🟠 Unfinished",
-        "🟡 Submitted (Preliminary)",
-        "🟦 Final (Awaiting Confirmation)",
-        "🟩 Confirmed (Official)"
-    ])
+    # ======================================================
+    # MAIN LAYOUT – TWO TABS
+    # ======================================================
+    tab_finished, tab_unfinished = st.tabs(["📋 Finished Sessions", "🕓 Unfinished Sessions"])
 
-    # ----------------------------------------------------------
-    # TAB 1: UNFINISHED
-    # ----------------------------------------------------------
-    with tab1:
+    # ------------------------------------------------------
+    # TAB 1: FINISHED
+    # ------------------------------------------------------
+    with tab_finished:
+        st.markdown("### Officially Recorded Sessions")
+        view_mode = st.radio(
+            "Show:",
+            ["🟡 Preliminary", "🟦 Final", "🟩 Confirmed"],
+            horizontal=True,
+            key="finished_filter",
+        )
+
+        if view_mode == "🟡 Preliminary":
+            show_sessions(
+                preliminary,
+                "🟡 Submitted (Preliminary)",
+                "✅ Completed and awaiting recorder review.",
+            )
+        elif view_mode == "🟦 Final":
+            show_sessions(
+                final,
+                "🟦 Final (Under Review)",
+                "🔒 View-only (Recorder reviewing).",
+            )
+        elif view_mode == "🟩 Confirmed":
+            show_sessions(
+                confirmed,
+                "🟩 Confirmed (Official Record)",
+                "✅ Locked – cannot be modified.",
+            )
+
+    # ------------------------------------------------------
+    # TAB 2: UNFINISHED
+    # ------------------------------------------------------
+    with tab_unfinished:
+        st.markdown("### 🕓 Unfinished Sessions (Private Drafts)")
         if not unfinished:
             st.info("No unfinished sessions.")
-        for s in unfinished:
-            st.markdown("---")
-            col1, col2, col3 = st.columns([3, 2, 2])
-            with col1:
-                st.subheader(f"{s['round_name']} — {s['shoot_date']}")
-            with col2:
-                st.markdown("**Status:** 🟠 Unfinished (Private)")
-            with col3:
-                st.markdown(f"**Progress:** {s['ends_recorded']} / {s['total_ends']}")
+        else:
+            for s in unfinished:
+                st.markdown("<br>", unsafe_allow_html=True)
+                col1, col2, col3 = st.columns([3, 2, 2])
+                with col1:
+                    st.markdown(
+                        f"<h4 style='font-size:22px; margin-bottom:0'>{s['round_name']} — {s['shoot_date']}</h4>",
+                        unsafe_allow_html=True,
+                    )
+                with col2:
+                    st.markdown("**Status:** Draft (Not yet submitted)")
+                with col3:
+                    st.markdown(
+                        f"**Progress:** {s['ends_recorded']} / {s['total_ends']}"
+                    )
 
-            c1, c2 = st.columns(2)
-            with c1:
                 if st.button("▶ Continue", key=f"resume_{s['session_id']}"):
                     st.session_state.session_id = s["session_id"]
                     st.session_state.selected_round = s["round_name"]
                     st.session_state.current_page = "score_entry"
                     st.rerun()
-            with c2:
-                if st.button("🗑 Delete", key=f"delete_{s['session_id']}"):
-                    exec_sql("DELETE FROM session WHERE id = :sid", {"sid": s["session_id"]})
-                    st.success("Unfinished session deleted.")
-                    st.rerun()
 
-    # ----------------------------------------------------------
-    # TAB 2: PRELIMINARY (Submitted)
-    # ----------------------------------------------------------
-    with tab2:
-        if not preliminary:
-            st.info("No submitted (Preliminary) sessions.")
-        for s in preliminary:
-            st.markdown("---")
-            col1, col2, col3 = st.columns([3, 2, 2])
-            with col1:
-                st.subheader(f"{s['round_name']} — {s['shoot_date']}")
-            with col2:
-                st.markdown("**Status:** 🟡 Submitted (Preliminary)")
-            with col3:
-                st.markdown(f"**Ends:** {s['ends_recorded']} / {s['total_ends']}")
-
-            st.caption("✅ Completed and awaiting recorder review.")
-            if st.button("📄 View", key=f"view_{s['session_id']}"):
-                st.session_state.session_id = s["session_id"]
-                st.session_state.selected_round = s["round_name"]
-                st.session_state.current_page = "score_entry"
-                st.rerun()
-
-    # ----------------------------------------------------------
-    # TAB 3: FINAL (Awaiting Confirmation)
-    # ----------------------------------------------------------
-    with tab3:
-        if not final:
-            st.info("No sessions awaiting confirmation.")
-        for s in final:
-            st.markdown("---")
-            col1, col2, col3 = st.columns([3, 2, 2])
-            with col1:
-                st.subheader(f"{s['round_name']} — {s['shoot_date']}")
-            with col2:
-                st.markdown("**Status:** 🟦 Final (Under Review)")
-            with col3:
-                st.markdown(f"**Ends:** {s['ends_recorded']} / {s['total_ends']}")
-            st.caption("🔒 View-only (Recorder reviewing).")
-
-    # ----------------------------------------------------------
-    # TAB 4: CONFIRMED (Official)
-    # ----------------------------------------------------------
-    with tab4:
-        if not confirmed:
-            st.info("No confirmed (official) sessions.")
-        for s in confirmed:
-            st.markdown("---")
-            col1, col2, col3 = st.columns([3, 2, 2])
-            with col1:
-                st.subheader(f"{s['round_name']} — {s['shoot_date']}")
-            with col2:
-                st.markdown("**Status:** 🟩 Confirmed (Official Record)")
-            with col3:
-                st.markdown(f"**Ends:** {s['ends_recorded']} / {s['total_ends']}")
-            st.caption("✅ Locked – cannot be modified.")
+            st.caption("ℹ️ Only administrators can delete sessions.")
