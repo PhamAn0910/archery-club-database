@@ -1,89 +1,382 @@
+from __future__ import annotations
 import streamlit as st
+from datetime import date
 from guards import require_archer
+from db_core import fetch_one, fetch_all, exec_sql
 
-@require_archer
-def show_score_entry():
 # ==========================================================
-#  PAGE 1: LIVE SCORE ENTRY
+#  READ FUNCTIONS
 # ==========================================================
-    st.title("Archery Club Dashboard App")
-    st.subheader("Sarah Johnson")
-    st.caption("Live Score Entry")
 
-    # Round Selection
-    st.markdown("### Select Round")
-    selected_round = st.selectbox(
-        "Choose a round...",
-        ["", "WA 900", "Melbourne", "Brisbane", "Canberra", "Short Metric"]
+@st.cache_data(ttl=60)
+def list_rounds():
+    """List all available rounds."""
+    return fetch_all(
+        """
+        SELECT r.id, r.round_name,
+               (SELECT COUNT(*) FROM round_range rr WHERE rr.round_id = r.id) AS range_count
+        FROM round r
+        ORDER BY r.round_name
+        """
     )
 
-    if selected_round:
-        st.info("Now Shooting: 6 ends at 90m, 122cm face")
-        st.markdown(f"### End {st.session_state.current_end} of 6")
 
-        # Dropdowns for arrow scores
-        arrow_labels = [f"Arrow {i}" for i in range(1, 7)]
-        score_options = ["M", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "X"]
+@st.cache_data(ttl=60)
+def list_ranges(round_id: int):
+    """List all distances/ranges for a given round."""
+    return fetch_all(
+        """
+        SELECT id, distance_m, face_size, ends_per_range
+        FROM round_range
+        WHERE round_id = :rid
+        ORDER BY distance_m
+        """,
+        {"rid": round_id},
+    )
 
-        arrow_values = []
-        cols = st.columns(3)
-        for i, label in enumerate(arrow_labels[:3]):
-            arrow_values.append(
-                cols[i].selectbox(
-                    label,
-                    score_options,
-                    index=score_options.index("M"),
-                    key=f"arrow_{st.session_state.current_end}_{i+1}"
-                )
+
+# ==========================================================
+#  WRITE FUNCTIONS
+# ==========================================================
+
+def create_session(member_id: int, round_id: int, shoot_date: str, status: str = "Preliminary") -> int:
+    """
+    Create a new shooting session for an archer.
+    Returns the newly created session ID.
+    """
+    sql = """
+        INSERT INTO session (member_id, round_id, shoot_date, status)
+        VALUES (:mid, :rid, :date, :status)
+    """
+    exec_sql(sql, {"mid": member_id, "rid": round_id, "date": shoot_date, "status": status})
+
+    # Fetch the new session ID
+    row = fetch_one(
+        "SELECT id FROM session WHERE member_id = :mid AND round_id = :rid ORDER BY id DESC LIMIT 1",
+        {"mid": member_id, "rid": round_id},
+    )
+    return row["id"] if row else None
+
+
+def save_end(session_id: int, round_range_id: int, end_no: int, arrow_values: list[str]):
+    """
+    Save a completed end and its six arrows safely.
+    Avoids duplicate inserts if rerun or all-M arrows are repeated.
+    """
+
+    # ------------------------------------------------------
+    # 1. Insert End if not already exists
+    # ------------------------------------------------------
+    sql_insert_end = """
+        INSERT INTO `end` (session_id, round_range_id, end_no)
+        SELECT :sid, :rrid, :end_no
+        WHERE NOT EXISTS (
+            SELECT 1 FROM `end`
+            WHERE session_id = :sid AND round_range_id = :rrid AND end_no = :end_no
+        );
+    """
+    exec_sql(sql_insert_end, {"sid": session_id, "rrid": round_range_id, "end_no": end_no})
+
+    # ------------------------------------------------------
+    # 2. Retrieve end_id for this specific end
+    # ------------------------------------------------------
+    end_row = fetch_one(
+        """
+        SELECT id FROM `end`
+        WHERE session_id = :sid AND round_range_id = :rrid AND end_no = :end_no
+        LIMIT 1
+        """,
+        {"sid": session_id, "rrid": round_range_id, "end_no": end_no},
+    )
+    if not end_row:
+        st.error("Failed to retrieve end_id after insertion.")
+        return
+    end_id = end_row["id"]
+
+    # ------------------------------------------------------
+    # 3. Skip insertion if arrows already recorded
+    # ------------------------------------------------------
+    existing = fetch_one("SELECT COUNT(*) AS c FROM arrow WHERE end_id = :eid", {"eid": end_id})
+    if existing["c"] > 0:
+        # Already saved (e.g., rerun scenario)
+        return
+
+    # ------------------------------------------------------
+    # 4. Insert all 6 arrows safely
+    # ------------------------------------------------------
+    for i, token in enumerate(arrow_values, start=1):
+        sql_arrow = """
+            INSERT INTO arrow (end_id, arrow_no, arrow_value)
+            VALUES (:eid, :ano, :aval)
+        """
+        exec_sql(sql_arrow, {"eid": end_id, "ano": i, "aval": token})
+
+
+def finalize_session(session_id: int):
+    """
+    Mark a session as 'Confirmed' after all ends are recorded.
+    """
+    sql = "UPDATE session SET status = 'Confirmed' WHERE id = :sid"
+    exec_sql(sql, {"sid": session_id})
+    
+@require_archer
+def show_score_entry():
+    # ==========================================================
+    # INITIALIZE STATE
+    # ==========================================================
+    defaults = {
+        "selected_round": None,
+        "round_id": None,
+        "round_ranges": [],
+        "current_range": 1,
+        "current_end": 1,
+        "session_id": None,
+        "scores": [],
+        "running_total": 0,
+    }
+    for key, val in defaults.items():
+        st.session_state.setdefault(key, val)
+
+    # ==========================================================
+    # AUTH CONTEXT
+    # ==========================================================
+    auth = st.session_state.get("auth")
+    if not auth or not auth.get("logged_in"):
+        st.error("You must be logged in as an archer to enter scores.")
+        if st.button("⬅️ Back to My Scores"):
+            st.session_state.current_page = "score_history"
+            st.rerun()
+        st.stop()
+
+    member_id = auth["id"]
+    member_name = auth["name"]
+
+    st.title("🏹 Live Score Entry")
+    st.subheader(member_name)
+    st.caption("Record your scores end by end")
+
+    # ==========================================================
+    # HANDLE EXISTING SESSION (RESUME) OR NEW SESSION
+    # ==========================================================
+    if st.session_state.session_id:
+        # Load round info for resumed session
+        round_info = fetch_one(
+            """
+            SELECT r.id AS round_id, r.round_name
+            FROM session s
+            JOIN round r ON r.id = s.round_id
+            WHERE s.id = :sid
+            """,
+            {"sid": st.session_state.session_id},
+        )
+        if not round_info:
+            st.error("Session not found or invalid.")
+            st.stop()
+
+        st.session_state.round_id = round_info["round_id"]
+        st.session_state.selected_round = round_info["round_name"]
+        selected_round = st.session_state.selected_round
+    else:
+        # Create new session
+        rounds = list_rounds()
+        round_names = [""] + [r["round_name"] for r in rounds]
+        selected_round = st.selectbox("Choose a round...", round_names, key="round_select")
+
+        if not selected_round:
+            st.info("Please select a round to begin.")
+            st.stop()
+
+        round_row = fetch_one("SELECT id FROM round WHERE round_name = :rname", {"rname": selected_round})
+        if not round_row:
+            st.error(f"Round '{selected_round}' not found in database.")
+            st.stop()
+
+        st.session_state.round_id = round_row["id"]
+        st.session_state.selected_round = selected_round
+        st.session_state.session_id = create_session(
+            member_id=member_id,
+            round_id=st.session_state.round_id,
+            shoot_date=str(date.today()),
+        )
+
+    # ==========================================================
+    # LOAD ROUND RANGES
+    # ==========================================================
+    if not st.session_state.round_ranges:
+        st.session_state.round_ranges = fetch_all(
+            """
+            SELECT id, distance_m, face_size, ends_per_range
+            FROM round_range
+            WHERE round_id = :rid
+            ORDER BY distance_m DESC
+            """,
+            {"rid": st.session_state.round_id},
+        )
+    ranges = st.session_state.round_ranges
+
+    # ==========================================================
+    # RESUME PROGRESS (calculate where to continue)
+    # ==========================================================
+    resume_rows = fetch_all(
+        """
+        SELECT rr.id AS range_id, rr.ends_per_range, COUNT(e.id) AS ends_done
+        FROM round_range rr
+        LEFT JOIN `end` e ON e.round_range_id = rr.id AND e.session_id = :sid
+        WHERE rr.round_id = :rid
+        GROUP BY rr.id, rr.ends_per_range
+        ORDER BY rr.distance_m DESC
+        """,
+        {"sid": st.session_state.session_id, "rid": st.session_state.round_id},
+    )
+
+    for i, r in enumerate(resume_rows, start=1):
+        if r["ends_done"] < r["ends_per_range"]:
+            st.session_state.current_range = i
+            st.session_state.current_end = r["ends_done"] + 1
+            break
+    else:
+        st.session_state.current_range = len(resume_rows)
+        st.session_state.current_end = resume_rows[-1]["ends_per_range"]
+
+    total_row = fetch_one(
+        """
+        SELECT SUM(CASE WHEN a.arrow_value='X' THEN 10
+                        WHEN a.arrow_value='M' THEN 0
+                        ELSE a.arrow_value END) AS total
+        FROM `end` e
+        JOIN arrow a ON a.end_id = e.id
+        WHERE e.session_id = :sid
+        """,
+        {"sid": st.session_state.session_id},
+    )
+    st.session_state.running_total = total_row["total"] or 0
+
+    # ==========================================================
+    # RANGE + END INFO
+    # ==========================================================
+    current_range_idx = st.session_state.current_range - 1
+    current_range = ranges[current_range_idx]
+    distance = current_range["distance_m"]
+    face = current_range["face_size"]
+    ends_per_range = current_range["ends_per_range"]
+
+    st.markdown(f"### Range {st.session_state.current_range} of {len(ranges)}")
+    st.info(f"Distance: {distance} m • Face: {face} cm")
+    st.markdown(f"#### End {st.session_state.current_end} of {ends_per_range}")
+
+    # ==========================================================
+    # INPUT SCORES
+    # ==========================================================
+    score_options = ["M", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "X"]
+    arrow_labels = [f"Arrow {i}" for i in range(1, 7)]
+    arrow_values = [
+        st.selectbox(label, score_options, key=f"{st.session_state.current_range}_{st.session_state.current_end}_{i}")
+        for i, label in enumerate(arrow_labels, start=1)
+    ]
+
+    def convert(v):
+        return 10 if v == "X" else 0 if v == "M" else int(v)
+
+    end_total = sum(convert(a) for a in arrow_values)
+    st.metric("End Total", end_total)
+    st.metric("Running Total", st.session_state.running_total)
+
+    # ==========================================================
+    # ACTIONS
+    # ==========================================================
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("➡️ Next End"):
+            exec_sql(
+                """
+                INSERT INTO `end` (session_id, round_range_id, end_no)
+                SELECT :sid, :rrid, :eno
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM `end`
+                    WHERE session_id = :sid AND round_range_id = :rrid AND end_no = :eno
+                );
+                """,
+                {"sid": st.session_state.session_id, "rrid": current_range["id"], "eno": st.session_state.current_end},
             )
-
-        cols2 = st.columns(3)
-        for i, label in enumerate(arrow_labels[3:]):
-            arrow_values.append(
-                cols2[i].selectbox(
-                    label,
-                    score_options,
-                    index=score_options.index("M"),
-                    key=f"arrow_{st.session_state.current_end}_{i+4}"
-                )
+            save_end(
+                session_id=st.session_state.session_id,
+                round_range_id=current_range["id"],
+                end_no=st.session_state.current_end,
+                arrow_values=arrow_values,
             )
+            st.session_state.running_total += end_total
 
-        # Convert scores
-        def convert(score):
-            if score == "X":
-                return 10
-            if score == "M":
-                return 0
-            return int(score)
+            # 🔧 Reload progress fresh to ensure correct end numbering
+            st.session_state.round_ranges = []
+            st.rerun()
 
-        numeric_scores = [convert(a) for a in arrow_values]
-        end_total = sum(numeric_scores)
+    with c2:
+        if st.button("⬅️ Back to My Scores"):
+            st.session_state.current_page = "score_history"
+            st.rerun()
 
-        # Display Totals
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        col1.metric("End Total", end_total)
-        col2.metric("Running Total", st.session_state.running_total)
+    # ==========================================================
+    # SUBMIT (WHEN COMPLETE)
+    # ==========================================================
+    st.markdown("---")
+    st.markdown("### Submit Scores for Approval")
 
-        # Buttons
-        col_next, col_reset = st.columns([1, 1])
-        with col_next:
-            if st.button("Next End ➡️"):
-                st.session_state.scores.append(end_total)
-                st.session_state.running_total += end_total
-                st.session_state.current_end += 1
-                if st.session_state.current_end > 6:
-                    st.session_state.current_end = 6
-                    st.success("🎯 Round Completed! All 6 ends recorded.")
-        with col_reset:
-            if st.button("🔁 Reset Round"):
-                st.session_state.current_end = 1
-                st.session_state.running_total = 0
-                st.session_state.scores = []
-                st.rerun()
+    total_ends = sum(r["ends_per_range"] for r in ranges)
+    ends_done_row = fetch_one("SELECT COUNT(*) AS c FROM `end` WHERE session_id = :sid", {"sid": st.session_state.session_id})
+    ends_done = ends_done_row["c"]
 
-        # Display previous end totals
-        if st.session_state.scores:
-            st.markdown("### 🧾 Summary of Ends")
-            for i, score in enumerate(st.session_state.scores, start=1):
-                st.write(f"End {i}: {score} points")
+    if ends_done < total_ends:
+        st.warning(f"Session incomplete ({ends_done}/{total_ends} ends). You can resume later.")
+    else:
+        if st.button("✅ Submit to Recorder"):
+            finalize_session(st.session_state.session_id)
+            # ✅ Reset to initial mode (Choose Round)
+            st.session_state.session_id = None
+            st.session_state.round_id = None
+            st.session_state.selected_round = None
+            st.session_state.round_ranges = []
+            st.session_state.current_end = 1
+            st.session_state.current_range = 1
+            st.session_state.running_total = 0
+            st.success("Scores submitted successfully (now Preliminary). Ready for a new session.")
+            st.rerun()
+
+    # ==========================================================
+    # SUMMARY (Grouped by Range)
+    # ==========================================================
+    st.markdown("### Summary of Ends")
+
+    summary_rows = fetch_all(
+        """
+        SELECT rr.distance_m, rr.face_size, e.end_no,
+               SUM(CASE WHEN a.arrow_value='X' THEN 10
+                        WHEN a.arrow_value='M' THEN 0
+                        ELSE a.arrow_value END) AS total
+        FROM `end` e
+        JOIN round_range rr ON rr.id = e.round_range_id
+        LEFT JOIN arrow a ON a.end_id = e.id
+        WHERE e.session_id = :sid
+        GROUP BY rr.distance_m, rr.face_size, e.end_no
+        ORDER BY rr.distance_m DESC, e.end_no ASC
+        """,
+        {"sid": st.session_state.session_id},
+    )
+
+    if not summary_rows:
+        st.caption("_No ends recorded yet._")
+    else:
+        current_distance = None
+        for row in summary_rows:
+            if row["distance_m"] != current_distance:
+                current_distance = row["distance_m"]
+                st.markdown(f"#### Range ({current_distance} m, {row['face_size']} cm)")
+            st.write(f"End {row['end_no']}: {row['total']} points")
+
+
+# ==========================================================
+# HELPERS
+# ==========================================================
+def finalize_session(session_id: int):
+    # Submitted sessions now marked Preliminary (recorder will confirm later)
+    exec_sql("UPDATE session SET status = 'Preliminary' WHERE id = :sid", {"sid": session_id})
+    return True
