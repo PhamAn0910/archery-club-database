@@ -41,8 +41,8 @@ def _load_sidebar_css() -> str:
 
 # Page identifiers for navigation
 PUBLIC_PAGES = [
-    ("🏆 Competition Results", "competition_results"),
-    ("🏆 Club Championship", "championship_ladder"),
+    ("Competition Results", "competition_results"),
+    ("Club Championship", "championship_ladder"),
 ]
 
 ARCHER_PAGES = [
@@ -103,7 +103,7 @@ def _visible_sections(auth: AuthState) -> dict[str, list[tuple[str, str]]]:
     Build a pure data model of navigation sections -> [(label, page_id), ...]
     """
     sections = {
-        "Home": [("🏠 Home", "home")],
+        "Home": [("Home", "home")],
         "Public": PUBLIC_PAGES.copy(),
     }
 

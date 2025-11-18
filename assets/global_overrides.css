@@ -126,6 +126,43 @@ div[data-testid="stAppViewContainer"] .stButton > button.always-active {
   background: #e8e8e9;
 }
 
+/* Checkbox styling for hover, active, and always-active states
+   EXCLUDE sidebar completely */
+main .stCheckbox,
+.stApp > div:not([data-testid="stSidebar"]) .stCheckbox,
+div[data-testid="stAppViewContainer"] .stCheckbox {
+  border-radius: calc(var(--ui-radius) - 4px);
+  transition: background-color 0.2s ease;
+}
+
+main .stCheckbox:hover,
+.stApp > div:not([data-testid="stSidebar"]) .stCheckbox:hover,
+div[data-testid="stAppViewContainer"] .stCheckbox:hover {
+  background: var(--color-primary-hover, #f3f3f5);
+}
+
+main .stCheckbox input:checked ~ label,
+.stApp > div:not([data-testid="stSidebar"]) .stCheckbox input:checked ~ label,
+div[data-testid="stAppViewContainer"] .stCheckbox input:checked ~ label {
+  background: #e8e8e9;
+}
+
+main .stCheckbox.always-active,
+.stApp > div:not([data-testid="stSidebar"]) .stCheckbox.always-active,
+div[data-testid="stAppViewContainer"] .stCheckbox.always-active {
+  background: #e8e8e9;
+}
+
+/* Multi-select tags: allow text wrapping for long tags */
+.stMultiSelect [data-baseweb="tag"] {
+  height: fit-content; /* Allows the tag to expand vertically */
+}
+.stMultiSelect [data-baseweb="tag"] span[title] {
+    white-space: normal; /* Allows text to wrap */
+    max-width: 100%; /* Ensures text stays within the tag width */
+    overflow-wrap: anywhere; /* Breaks long words if necessary */
+}
+
 /* Secondary-looking buttons
    EXCLUDE sidebar completely */
 main .stButton[role] > button[aria-pressed="false"],
@@ -229,6 +266,18 @@ select, .stSelectbox select, .stSelectbox div[role="combobox"] {
 .stColumns, .stColumn, .st-col, .stBlock, .stContainer {
   gap: 12px;
 }
+
+/* Success messages: always use green theme/palette */
+/* .stSuccess, [data-testid="stSuccess"], [data-testid="stNotification"][data-baseweb="notification"][kind="success"] {
+  background-color: rgba(34, 197, 94, 0.1) !important;
+  border-left-color: rgb(34, 197, 94) !important;
+  color: rgb(21, 128, 61) !important;
+}
+
+.stSuccess [data-testid="stMarkdownContainer"] p,
+[data-testid="stSuccess"] [data-testid="stMarkdownContainer"] p {
+  color: rgb(21, 128, 61) !important;
+} */
 
 /* Dataframe/table tweaks (more readable rows & header tokens) */
 table, .stDataFrame table {

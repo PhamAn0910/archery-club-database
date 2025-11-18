@@ -293,13 +293,13 @@ CREATE TABLE competition_entry (
 -- 13. Table: session_audit
 -- Audit log for session status changes.
 -- -----------------------------------------------------
-CREATE TABLE session_audit (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    session_id INT NOT NULL,
-    old_status ENUM('Preliminary', 'Final', 'Confirmed'),
-    new_status ENUM('Preliminary', 'Final', 'Confirmed') NOT NULL,
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    changed_by INT,
-    FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
-    FOREIGN KEY (changed_by) REFERENCES club_member(id) ON DELETE SET NULL
-) ENGINE=InnoDB;
+-- CREATE TABLE session_audit (
+--     id INT AUTO_INCREMENT PRIMARY KEY,
+--     session_id INT NOT NULL,
+--     old_status ENUM('Preliminary', 'Final', 'Confirmed'),
+--     new_status ENUM('Preliminary', 'Final', 'Confirmed') NOT NULL,
+--     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     changed_by INT,
+--     FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+--     FOREIGN KEY (changed_by) REFERENCES club_member(id) ON DELETE SET NULL
+-- ) ENGINE=InnoDB;

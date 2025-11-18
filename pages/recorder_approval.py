@@ -8,24 +8,19 @@ Features implemented:
 - Filter by competition or show unassigned sessions.
 - Clickable AgGrid table showing AV number, round, shoot date, status, and total score.
 - Click on a row to select it, then use action buttons:
-  - "📊 Edit Score" button opens score editor with:
-    - Range selection dropdown
-    - End-by-end navigation (Prev/Next buttons below arrows)
-    - 6-arrow editor per end
-    - Running total display (end score + session total)
-  - "🔄 Change Status" button opens single session status editor
-  - "📋 Bulk Change" button opens bulk status change interface with:
-    - Multi-filter options (status, round, AV number)
-    - Preview table of affected sessions
-    - Protection for locked sessions (Final/Confirmed after comp end)
-    - Progress tracking and error handling
-    - Confirmation checkbox for safety
-  - "✖ Clear Selection" button clears the selection
+  - Edit Score: opens score editor with range selection, end navigation, and arrow editing
+  - Change Status: opens single session status editor
+  - Group Approve/Revert: batch status change with filtering and preview
+  - Clear Selection: clears current row selection
 - Status changes create audit trail.
-- Editing protections: Final/Confirmed scores locked after competition end date.
+- Editing protections: Sessions locked after competition end date.
 - Shows all available competitions and all club members with their scores.
+- Date display format: dd-mm-yyyy (UI), yyyy-mm-dd (database/backend).
 """
 
+# =====================================================
+# IMPORTS
+# =====================================================
 import datetime
 from typing import List, Dict, Optional
 
@@ -35,6 +30,9 @@ from db_core import fetch_all, exec_sql, fetch_one
 from sqlalchemy.exc import ProgrammingError
 from guards import require_recorder
 
+# =====================================================
+# AGGRID INTEGRATION (OPTIONAL)
+# =====================================================
 # Optional AgGrid integration for clickable tables (nice UX). If st_aggrid is
 # not available we'll fall back to a simpler list-based UI.
 try:
@@ -44,6 +42,18 @@ except Exception:
     HAS_AGGRID = False
     AgGrid = GridOptionsBuilder = GridUpdateMode = None
 
+
+# =====================================================
+# GLOBAL CONSTANTS
+# =====================================================
+DAYS_BEFORE_WARNING = 2  # Warn if competition ends within this many days
+DATE_FORMAT_UI = "%d-%m-%Y"  # dd-mm-yyyy for UI display
+DATE_FORMAT_DB = "%Y-%m-%d"  # yyyy-mm-dd for database/backend
+
+
+# =====================================================
+# UTILITY FUNCTIONS
+# =====================================================
 
 def _get_recorder_id() -> Optional[int]:
     """Get the current recorder's member ID from session state."""
@@ -59,9 +69,19 @@ def _today_date() -> datetime.date:
 def _parse_date(s: str) -> datetime.date:
     """Parse a date string in YYYY-MM-DD format."""
     try:
-        return datetime.datetime.strptime(s, "%Y-%m-%d").date()
+        return datetime.datetime.strptime(s, DATE_FORMAT_DB).date()
     except Exception:
         return _today_date()
+
+
+def _format_date_for_ui(date: datetime.date) -> str:
+    """Format a date object for UI display (dd-mm-yyyy)."""
+    return date.strftime(DATE_FORMAT_UI)
+
+
+def _format_date_for_db(date: datetime.date) -> str:
+    """Format a date object for database operations (yyyy-mm-dd)."""
+    return date.strftime(DATE_FORMAT_DB)
 
 
 def _score_from_arrow(a: str) -> int:
@@ -131,6 +151,10 @@ def _compute_session_total(session_id: int) -> int:
         return 0
 
 
+# =====================================================
+# SESSION STATUS MANAGEMENT
+# =====================================================
+
 def _update_session_status(session_id: int, old_status: str, new_status: str):
     """Update session status and write audit trail."""
     exec_sql(
@@ -151,7 +175,12 @@ def _update_session_status(session_id: int, old_status: str, new_status: str):
             st.error(f"Failed to write audit row: {ae}")
 
 
-def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: bool):
+# =====================================================
+# ARROW EDITOR
+# =====================================================
+
+
+def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: bool, comp_end: datetime.date):
     """Render the 6-arrow editor for a single end."""
     arrows = fetch_all(
         "SELECT arrow_no, arrow_value FROM arrow WHERE end_id = :end_id ORDER BY arrow_no",
@@ -163,89 +192,95 @@ def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: b
     while len(arrow_vals) < 6:
         arrow_vals.append('M')
     
-    if protected:
-        st.write(f"**End {end_no}:** {' '.join(arrow_vals)}")
-        return arrow_vals
-    else:
-        st.markdown(f"**End {end_no}**")
-        cols = st.columns(6)
-        new_vals: List[str] = []
-        choices = ['X', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1', 'M']
-        
-        for i in range(6):
-            with cols[i]:
-                cur = arrow_vals[i]
-                idx = choices.index(cur) if cur in choices else len(choices)-1
-                new = st.selectbox(
-                    f"Arrow {i+1}",
-                    options=choices,
-                    index=idx,
-                    key=f"arrow_{session_id}_{end_id}_{i}"
+    st.markdown(f"**End {end_no}**")
+    cols = st.columns(6)
+    new_vals: List[str] = []
+    choices = ['X', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1', 'M']
+    
+    for i in range(6):
+        with cols[i]:
+            cur = arrow_vals[i]
+            idx = choices.index(cur) if cur in choices else len(choices)-1
+            new = st.selectbox(
+                f"Arrow {i+1}",
+                options=choices,
+                index=idx,
+                key=f"arrow_{session_id}_{end_id}_{i}_{comp_end.strftime(DATE_FORMAT_DB)}",
+                disabled=protected  # Disable if protected
+            )
+            new_vals.append(new)
+    
+    # Only persist changes if not protected
+    if not protected and new_vals != arrow_vals:
+        for i, nv in enumerate(new_vals):
+            if i < len(arrows):
+                exec_sql(
+                    "UPDATE arrow SET arrow_value = :value WHERE end_id = :end_id AND arrow_no = :arrow_no",
+                    params={'value': nv, 'end_id': end_id, 'arrow_no': i+1}
                 )
-                new_vals.append(new)
-        
-        # Persist changes per arrow
-        if new_vals != arrow_vals:
-            for i, nv in enumerate(new_vals):
-                if i < len(arrows):
-                    exec_sql(
-                        "UPDATE arrow SET arrow_value = :value WHERE end_id = :end_id AND arrow_no = :arrow_no",
-                        params={'value': nv, 'end_id': end_id, 'arrow_no': i+1}
-                    )
-                else:
-                    exec_sql(
-                        "INSERT INTO arrow (end_id, arrow_no, arrow_value) VALUES (:end_id, :arrow_no, :value)",
-                        params={'end_id': end_id, 'arrow_no': i+1, 'value': nv}
-                    )
-        
-        # Return the NEW values (what the user just selected), not the old values
-        return new_vals
+            else:
+                exec_sql(
+                    "INSERT INTO arrow (end_id, arrow_no, arrow_value) VALUES (:end_id, :arrow_no, :value)",
+                    params={'end_id': end_id, 'arrow_no': i+1, 'value': nv}
+                )
+    
+    # Return the NEW values (what the user just selected), not the old values
+    return new_vals
 
+
+# =====================================================
+# STATUS EDITOR
+# =====================================================
 
 def _render_status_editor(session: Dict, comp_end: datetime.date):
     """Render inline status editor when Status cell is clicked."""
     session_id = session['session_id']
     status = session['status']
     today = _today_date()
-    protected = (today > comp_end and status in ('Final', 'Confirmed'))
+    protected = (today > comp_end)
     
-    st.markdown("---")
     st.markdown(f"### Change Status: {session.get('av_number', 'N/A')} — {session['round_name']}")
     
     if protected:
-        st.warning(f"Status is locked at '{status}' (competition ended on {comp_end})")
+        st.warning(f"Status is locked at '{status}' (competition ended on {_format_date_for_ui(comp_end)})")
     else:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            new_status = st.selectbox(
-                "Select new status",
-                options=['Preliminary', 'Final', 'Confirmed'],
-                index=['Preliminary', 'Final', 'Confirmed'].index(status),
-                key=f"status_edit_{session_id}"
-            )
-        with col2:
-            st.write("")  # Spacing
-            if st.button("Apply", key=f"apply_status_{session_id}"):
-                if new_status != status:
-                    _update_session_status(session_id, status, new_status)
-                    st.success(f"Status updated from '{status}' to '{new_status}'")
-                    st.rerun()
-                    _update_session_status(session_id, status, new_status)
-                    st.success(f"Status updated to {new_status}")
-                    st.rerun()
+        new_status = st.selectbox(
+            "Select new status",
+            options=['Preliminary', 'Final', 'Confirmed'],
+            index=['Preliminary', 'Final', 'Confirmed'].index(status),
+            key=f"status_edit_{session_id}"
+        )
+        if st.button("Apply", key=f"apply_status_{session_id}", type="primary", use_container_width=True):
+            if new_status != status:
+                _update_session_status(session_id, status, new_status)
+                # Persist message across rerun and close the status editor UI
+                st.session_state[f"status_msg_{session_id}"] = f"Status updated from '{status}' to '{new_status}'"
+                comp_id = session.get('competition_id') or 'unassigned'
+                st.session_state.pop(f"show_status_{comp_id}", None)
+                st.rerun()
+            else:
+                _update_session_status(session_id, status, new_status)
+                st.session_state[f"status_msg_{session_id}"] = f"Status has been updated to {new_status}"
+                comp_id = session.get('competition_id') or 'unassigned'
+                st.session_state.pop(f"show_status_{comp_id}", None)
+                st.rerun()
 
 
-def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, comp_key: str):
+# =====================================================
+# GROUP APPROVE/REVERT EDITOR
+# =====================================================
+
+def _render_group_approve_editor(sess_list: List[Dict], comp_end: datetime.date, comp_key: str):
     """
-    Render bulk status change interface with filtering and preview.
+    Render group approve/revert interface with filtering and preview.
     
     Args:
         sess_list: List of session dictionaries for the competition
         comp_end: Competition end date for protection logic
         comp_key: Competition key (ID or 'unassigned') for unique keys
     """
-    st.markdown("---")
-    st.markdown("### 📋 Bulk Status Change")
+
+    st.markdown("### Group Approve/Revert")
     st.caption("Change status for multiple sessions at once with filtering options")
     
     today = _today_date()
@@ -283,17 +318,15 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
     ]
     
     # Check for protected sessions
-    protected_sessions = [
-        s for s in filtered_sessions
-        if today > comp_end and s['status'] in ('Final', 'Confirmed')
-    ]
-    editable_sessions = [
-        s for s in filtered_sessions
-        if not (today > comp_end and s['status'] in ('Final', 'Confirmed'))
-    ]
+    if today > comp_end:
+        protected_sessions = list(filtered_sessions)
+        editable_sessions = []
+    else:
+        editable_sessions = [s for s in filtered_sessions if s['status'] != ('Final', 'Confirmed')]
+        protected_sessions = [s for s in filtered_sessions if s['status'] == ('Final', 'Confirmed')]
     
     # Display summary
-    st.markdown("---")
+    st.markdown("") # Spacing
     col_summary1, col_summary2, col_summary3 = st.columns(3)
     with col_summary1:
         st.metric("Total Filtered", len(filtered_sessions))
@@ -311,8 +344,9 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
         return
     
     # Preview table
-    st.markdown("---")
-    st.markdown("**📊 Preview Affected Sessions**")
+    st.markdown("") # Spacing
+    st.markdown("")
+    st.markdown("##### :material/view_list: Preview Affected Sessions")
     preview_data = []
     for s in editable_sessions:
         preview_data.append({
@@ -326,7 +360,7 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
     st.dataframe(df_preview, use_container_width=True, hide_index=True)
     
     # Status change controls
-    st.markdown("---")
+    st.markdown("") # Spacing
     col_action1, col_action2, col_action3 = st.columns([2, 1, 2])
     
     with col_action1:
@@ -349,18 +383,19 @@ def _render_bulk_status_editor(sess_list: List[Dict], comp_end: datetime.date, c
         st.write("")  # Spacing
         st.write("")  # Spacing
         if st.button(
-            f"✓ Apply to {len(editable_sessions)} Session(s)",
+            f"Apply to {len(editable_sessions)} Session(s)",
             key=f"bulk_apply_{comp_key}",
             type="primary",
+            icon=":material/list_alt_check:",
             disabled=not confirm_bulk,
             use_container_width=True
         ):
-            _execute_bulk_status_change(editable_sessions, new_bulk_status, comp_key)
+            _execute_group_approve_change(editable_sessions, new_bulk_status, comp_key)
 
 
-def _execute_bulk_status_change(sessions: List[Dict], new_status: str, comp_key: str):
+def _execute_group_approve_change(sessions: List[Dict], new_status: str, comp_key: str):
     """
-    Execute bulk status change with progress tracking and error handling.
+    Execute group approve/revert status change with progress tracking and error handling.
     
     Args:
         sessions: List of session dictionaries to update
@@ -401,26 +436,24 @@ def _execute_bulk_status_change(sessions: List[Dict], new_status: str, comp_key:
     progress_bar.empty()
     status_text.empty()
     
-    # Display results
-    st.markdown("---")
-    st.markdown("### ✅ Bulk Update Complete")
+    # Store results in session state to display after rerun (outside column context)
+    st.session_state[f'bulk_results_{comp_key}'] = {
+        'success_count': success_count,
+        'skipped_count': skipped_count,
+        'error_count': error_count,
+        'new_status': new_status
+    }
     
-    col_result1, col_result2, col_result3 = st.columns(3)
-    with col_result1:
-        st.metric("✓ Updated", success_count)
-    with col_result2:
-        st.metric("⊘ Skipped", skipped_count, help="Already at target status")
-    with col_result3:
-        st.metric("✗ Errors", error_count)
-    
-    if success_count > 0:
-        st.success(f"Successfully updated {success_count} session(s) to '{new_status}'")
-    
-    # Clear bulk editor state and rerun to refresh data
+    # Clear group approve editor state and rerun to refresh data
     if success_count > 0 or error_count > 0:
         st.session_state.pop(f"show_bulk_{comp_key}", None)
         st.balloons()
         st.rerun()
+
+
+# =====================================================
+# SCORE EDITOR
+# =====================================================
 
 
 def _render_score_editor(session: Dict, comp_end: datetime.date):
@@ -434,10 +467,10 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     session_id = session['session_id']
     status = session['status']
     today = _today_date()
-    protected = (today > comp_end and status in ('Final', 'Confirmed'))
+    protected = (today > comp_end)  # Protect if competition has ended
     
-    st.markdown("---")
-    st.markdown(f"### Score Editor: {session.get('av_number', 'N/A')} — {session['round_name']} ({session['shoot_date']})")
+    view_mode = " (View Only)" if protected else ""
+    st.markdown(f"### Score Editor{view_mode}: {session.get('av_number', 'N/A')} — {session['round_name']} ({_format_date_for_ui(_parse_date(session['shoot_date']))})")
     
     # Fetch ranges for this round
     ranges = fetch_all(
@@ -452,7 +485,7 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     
     # Range selector
     range_options = [f"{r['distance_m']}m (face {r['face_size']}) — {r['ends_per_range']} ends" for r in ranges]
-    range_key = f"range_selector_{session_id}"
+    range_key = f"range_selector_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}"  # Make unique per session and comp
     
     if range_key not in st.session_state:
         st.session_state[range_key] = 0
@@ -462,7 +495,8 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
         options=list(range(len(range_options))),
         format_func=lambda i: range_options[i],
         index=st.session_state[range_key],
-        key=f"range_select_{session_id}"
+        key=f"range_select_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}",  # Make unique
+        # disabled=protected  # Disable if protected
     )
     st.session_state[range_key] = selected_range_idx
     
@@ -480,18 +514,19 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
         return
     
     # End navigator
-    end_key = f"end_idx_{session_id}_{range_id}"
+    end_key = f"end_idx_{session_id}_{range_id}_{comp_end.strftime(DATE_FORMAT_DB)}"  # Make unique
     if end_key not in st.session_state:
         st.session_state[end_key] = 0
     
     current_end_idx = st.session_state[end_key]
     total_ends = len(ends)
     
-    st.markdown(f"**Editing End {current_end_idx + 1} of {total_ends}**")
+    st.markdown("") # Spacing
+    st.markdown(f"#### Editing End {current_end_idx + 1} of {total_ends}")
     
     # Render arrow editor for current end
     current_end = ends[current_end_idx]
-    arrow_vals = _render_arrow_editor(session_id, current_end['id'], current_end['end_no'], protected)
+    arrow_vals = _render_arrow_editor(session_id, current_end['id'], current_end['end_no'], protected, comp_end)
     
     # Calculate running total for current end
     end_score = sum(_score_from_arrow(a) for a in arrow_vals)
@@ -500,30 +535,41 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     session_total = _compute_session_total(session_id)
     
     # Display running totals
-    st.markdown(f"**End Score:** {end_score} | **Running Total:** {session_total}")
+    col_summary1, col_summary2 = st.columns(2)
+    with col_summary1:
+        st.metric("End Score", end_score)
+    with col_summary2:
+        st.metric("Running Total", session_total)
     
     # Navigation buttons below the arrows (tightened spacing)
     st.markdown("")  # Small gap
     col_prev, col_next = st.columns(2)
     with col_prev:
-        if st.button("◀ Prev", key=f"prev_end_{session_id}_{range_id}", 
-                     disabled=(current_end_idx == 0 or protected),
+        if st.button("◀ Previous End", key=f"prev_end_{session_id}_{range_id}_{comp_end.strftime(DATE_FORMAT_DB)}", 
+                     disabled=current_end_idx == 0,
                      use_container_width=True):
             st.session_state[end_key] = max(0, current_end_idx - 1)
             st.rerun()
     
     with col_next:
-        if st.button("Next ▶", key=f"next_end_{session_id}_{range_id}", 
-                     disabled=(current_end_idx >= total_ends - 1 or protected),
+        if st.button("Next End ▶", key=f"next_end_{session_id}_{range_id}_{comp_end.strftime(DATE_FORMAT_DB)}", 
+                     disabled=current_end_idx >= total_ends - 1,
                      use_container_width=True):
             st.session_state[end_key] = min(total_ends - 1, current_end_idx + 1)
             st.rerun()
 
+# =====================================================
+# MAIN PAGE FUNCTION
+# =====================================================
 
 @require_recorder
 def show_recorder_approval():
     st.title("Score Approval")
     st.caption("Select a competition, click a session row to edit arrows and change status.")
+    
+    # Note: transient action messages (status/bulk results) are now shown inline
+    # next to the editor controls that triggered them so they appear beneath
+    # the calling UI rather than at the very top of the page.
     
     # Fetch ALL competitions, sorted by start date (most recent first)
     competitions = fetch_all("""
@@ -537,11 +583,124 @@ def show_recorder_approval():
         st.info("No competitions found in the database.")
         return
     
-    comp_options = [f"{c['id']}: {c['name']}" for c in competitions]
+    # Check for upcoming competition deadlines (Preliminary/Final sessions)
+    today = _today_date()
+    for comp in competitions:
+        comp_end = _parse_date(comp['end_date'])
+        days_left = (comp_end - today).days
+        
+        if 0 < days_left <= DAYS_BEFORE_WARNING:
+            # Count unconfirmed sessions for this competition
+            unconfirmed_count = fetch_one("""
+                SELECT COUNT(*) as count
+                FROM session s
+                JOIN competition_entry ce ON ce.session_id = s.id
+                WHERE ce.competition_id = :comp_id AND s.status IN ('Preliminary', 'Final')
+            """, params={'comp_id': comp['id']})
+            
+            if unconfirmed_count and unconfirmed_count['count'] > 0:
+                st.warning(
+                    f"**{comp['name']}** ends in {days_left} day(s) on {_format_date_for_ui(comp_end)}. "
+                    f"There are {unconfirmed_count['count']} unconfirmed session(s) that need review!",
+                    icon=":material/warning:"
+                )
+    
+    # Check for upcoming unassigned session deadlines (Preliminary/Final sessions)
+    # Excludes sessions ending today (only warns for sessions ending 1-2 days from now)
+    unassigned_sessions_ending_soon = fetch_all("""
+        SELECT s.id, s.shoot_date, r.round_name
+        FROM session s
+        JOIN round r ON r.id = s.round_id
+        WHERE s.id NOT IN (SELECT session_id FROM competition_entry)
+          AND s.status IN ('Preliminary', 'Final')
+          AND s.shoot_date > :today
+          AND s.shoot_date <= :warning_date
+        ORDER BY s.shoot_date ASC
+    """, params={
+        'today': today.strftime(DATE_FORMAT_DB),
+        'warning_date': (today + datetime.timedelta(days=DAYS_BEFORE_WARNING)).strftime(DATE_FORMAT_DB)
+    })
+    
+    if unassigned_sessions_ending_soon:
+        session_list = ", ".join([
+            f"{s['round_name']} on {_format_date_for_ui(_parse_date(s['shoot_date']))}"
+            for s in unassigned_sessions_ending_soon
+        ])
+        days_until = (min([_parse_date(s['shoot_date']) for s in unassigned_sessions_ending_soon]) - today).days
+        st.warning(
+            f"⚠ **Unassigned sessions** ending in {days_until}-{DAYS_BEFORE_WARNING} day(s) with status Preliminary/Final: {session_list}"
+        )
+    
+    # Competition filters
+    st.markdown("#### Filter Competitions")
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    
+    with col_filter1:
+        # Status filter (all/active/ended)
+        comp_status_filter = st.selectbox(
+            "Competition Status",
+            options=['All', 'Active', 'Ended'],
+            index=0,
+            help="Filter competitions by their current status"
+        )
+    
+    with col_filter2:
+        # Date range filter
+        default_start = today - datetime.timedelta(days=365)  # 1 year ago
+        default_end = today + datetime.timedelta(days=180)    # 6 months ahead
+        
+        date_range_start = st.date_input(
+            "From Date",
+            value=default_start,
+            help="Show competitions starting from this date"
+        )
+        
+    with col_filter3:
+        date_range_end = st.date_input(
+            "To Date",
+            value=default_end,
+            help="Show competitions ending before this date"
+        )
+    
+    # Apply filters to competitions
+    filtered_competitions = []
+    for c in competitions:
+        comp_start = _parse_date(c['start_date'])
+        comp_end = _parse_date(c['end_date'])
+        
+        # Apply status filter
+        if comp_status_filter == 'Active' and today > comp_end:
+            continue
+        if comp_status_filter == 'Ended' and today <= comp_end:
+            continue
+        
+        # Apply date range filter
+        if comp_end < date_range_start or comp_start > date_range_end:
+            continue
+        
+        filtered_competitions.append(c)
+    
+    if not filtered_competitions:
+        st.info("No competitions match the selected filters.")
+        return
+    
+    # comp_options = [f"{c['id']}: {c['name']} ({_format_date_for_ui(_parse_date(c['start_date']))} - {_format_date_for_ui(_parse_date(c['end_date']))})" for c in filtered_competitions]
+    comp_options = [f"{c['id']}: {c['name']}" for c in filtered_competitions]
     selected = st.multiselect(
         "Select competitions to review",
         options=comp_options,
         default=comp_options
+    )
+    
+    # Round filter
+    all_rounds = fetch_all("SELECT DISTINCT round_name FROM round ORDER BY round_name")
+    round_names = [r['round_name'] for r in all_rounds]
+    
+    selected_rounds = st.multiselect(
+        "Filter by Round (optional)",
+        options=round_names,
+        default=[],
+        help="Leave empty to show all rounds"
     )
     
     # Option to show sessions not yet entered into competitions
@@ -561,8 +720,15 @@ def show_recorder_approval():
     if selected:
         selected_ids = [int(s.split(":", 1)[0]) for s in selected]
         
+        # Build round filter condition
+        round_filter_sql = ""
+        round_params = {}
+        if selected_rounds:
+            round_filter_sql = "AND r.round_name IN :round_names"
+            round_params = {'round_names': tuple(selected_rounds)}
+        
         # Load sessions that are entered into the selected competitions
-        comp_sessions = fetch_all("""
+        comp_sessions = fetch_all(f"""
             SELECT s.id AS session_id, s.member_id, s.round_id,
                    DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
                    s.status, ce.competition_id, c.name AS competition_name,
@@ -573,14 +739,22 @@ def show_recorder_approval():
             JOIN competition c ON c.id = ce.competition_id
             JOIN round r ON r.id = s.round_id
             JOIN club_member cm ON cm.id = s.member_id
-            WHERE ce.competition_id IN :ids
+            WHERE ce.competition_id IN :ids {round_filter_sql}
             ORDER BY c.name, s.shoot_date, cm.full_name
-        """, params={'ids': tuple(selected_ids)})
+        """, params={'ids': tuple(selected_ids), **round_params})
         sessions.extend(comp_sessions)
     
     if show_unassigned:
+        # Build round filter condition for unassigned
+        round_filter_sql = ""
+        round_params = {}
+        if selected_rounds:
+            round_filter_sql = "AND r.round_name IN :round_names"
+            round_params = {'round_names': tuple(selected_rounds)}
+        
         # Load sessions that are NOT entered into any competition
-        unassigned_sessions = fetch_all("""
+        # Sort by shoot_date ASC so sessions that end first come first
+        unassigned_sessions = fetch_all(f"""
             SELECT s.id AS session_id, s.member_id, s.round_id,
                    DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
                    s.status, NULL AS competition_id, 'Unassigned' AS competition_name,
@@ -590,9 +764,9 @@ def show_recorder_approval():
             JOIN round r ON r.id = s.round_id
             JOIN club_member cm ON cm.id = s.member_id
             LEFT JOIN competition_entry ce ON ce.session_id = s.id
-            WHERE ce.session_id IS NULL
-            ORDER BY s.shoot_date DESC, cm.full_name
-        """)
+            WHERE ce.session_id IS NULL {round_filter_sql}
+            ORDER BY s.shoot_date ASC, cm.full_name
+        """, params=round_params)
         sessions.extend(unassigned_sessions)
     
     if not sessions:
@@ -613,21 +787,20 @@ def show_recorder_approval():
         comp_key = s['competition_id'] if s['competition_id'] is not None else 'unassigned'
         sessions_by_comp.setdefault(comp_key, []).append(s)
     
-    st.markdown("---")
-    
     # Per-competition listing
     for comp_key, sess_list in sessions_by_comp.items():
         if comp_key == 'unassigned':
-            comp_name = "🔄 Unassigned Sessions"
+            comp_name = "⋮≡ Unassigned Sessions"
             comp_end = _today_date()
             comp_id = 'unassigned'
         else:
-            comp = next((c for c in competitions if c['id'] == comp_key), None)
+            comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
             comp_name = comp['name'] if comp else str(comp_key)
             comp_end = _parse_date(comp['end_date']) if comp else _today_date()
             comp_id = comp_key
         
-        st.markdown(f"## {comp_name} — ends {comp_end}")
+        st.markdown("---") # Separator between competitions
+        st.markdown(f"## {comp_name} — ends {_format_date_for_ui(comp_end)}")
         
         if HAS_AGGRID and sess_list:
             # Build dataframe for the grid with Total Score column
@@ -638,7 +811,7 @@ def show_recorder_approval():
                     'session_id': s['session_id'],
                     'av_number': s['av_number'],
                     'round': s['round_name'],
-                    'shoot_date': s['shoot_date'],
+                    'shoot_date': _format_date_for_ui(_parse_date(s['shoot_date'])),  # Format for UI
                     'status': s['status'],
                     'total': total,
                 })
@@ -706,30 +879,37 @@ def show_recorder_approval():
             if editor_session_id:
                 selected_session = next((s for s in sess_list if s['session_id'] == editor_session_id), None)
                 if selected_session:
-                    st.markdown("---")
-                    st.markdown(f"**Selected:** {selected_session.get('av_number', 'N/A')} — {selected_session['round_name']} ({selected_session['shoot_date']})")
+                    st.markdown("") # small gap
+                    st.markdown(f"**Selected:** {selected_session.get('av_number', 'N/A')} — {selected_session['round_name']} ({_format_date_for_ui(_parse_date(selected_session['shoot_date']))})")
                     
+                    # Determine competition-level protection once per competition.
+                    # If comp_end is in the past, disable editing actions for all sessions in this competition.
+                    protected_comp = (_today_date() > comp_end)
+
                     col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
                     with col1:
-                        if st.button("📊 Edit Score", key=f"btn_score_{comp_id}_{editor_session_id}", use_container_width=True):
+                        # View/Edit Score button (view-only if protected)
+                        button_label = "View Score" if protected_comp else "Edit Score"
+                        button_icon = ":material/visibility:" if protected_comp else ":material/edit:"
+                        if st.button(button_label, key=f"btn_score_{comp_id}_{editor_session_id}", icon=button_icon, use_container_width=True):
                             st.session_state[f"show_score_{comp_id}"] = True
                             st.session_state.pop(f"show_status_{comp_id}", None)
                             st.session_state.pop(f"show_bulk_{comp_id}", None)
                             st.rerun()
                     with col2:
-                        if st.button("🔄 Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", use_container_width=True):
+                        if st.button("Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", icon=":material/swap_horiz:", use_container_width=True, disabled=protected_comp):
                             st.session_state[f"show_status_{comp_id}"] = True
                             st.session_state.pop(f"show_score_{comp_id}", None)
                             st.session_state.pop(f"show_bulk_{comp_id}", None)
                             st.rerun()
                     with col3:
-                        if st.button("📋 Bulk Change", key=f"btn_bulk_{comp_id}_{editor_session_id}", use_container_width=True):
+                        if st.button("Group Approve/Revert", key=f"btn_bulk_{comp_id}_{editor_session_id}", icon=":material/list:", use_container_width=True, disabled=protected_comp):
                             st.session_state[f"show_bulk_{comp_id}"] = True
                             st.session_state.pop(f"show_score_{comp_id}", None)
                             st.session_state.pop(f"show_status_{comp_id}", None)
                             st.rerun()
                     with col4:
-                        if st.button("✖ Clear Selection", key=f"btn_clear_{comp_id}_{editor_session_id}"):
+                        if st.button("Clear Selection", key=f"btn_clear_{comp_id}_{editor_session_id}", icon=":material/clear:"):
                             # Clear all session states related to this competition
                             st.session_state.pop(session_key, None)
                             st.session_state.pop(f"show_score_{comp_id}", None)
@@ -740,16 +920,52 @@ def show_recorder_approval():
                             st.session_state[f"grid_reload_{comp_id}"] = current_reload + 1
                             st.rerun()
                     
+                    if protected_comp:
+                        st.info("This competition has ended — scores are view-only, status changes are disabled.", icon=":material/lock:")
+
                     # Render the appropriate editor based on button clicks
                     if st.session_state.get(f"show_score_{comp_id}"):
                         _render_score_editor(selected_session, comp_end)
                     elif st.session_state.get(f"show_status_{comp_id}"):
                         _render_status_editor(selected_session, comp_end)
                     elif st.session_state.get(f"show_bulk_{comp_id}"):
-                        _render_bulk_status_editor(sess_list, comp_end, str(comp_id))
+                        _render_group_approve_editor(sess_list, comp_end, str(comp_id))
+
+                    st.markdown("") #small gap
+                    st.markdown("")
+                    # --- Inline transient messages (appear under the calling UI) ---
+                    # Show any status update message for this particular session
+                    try:
+                        status_msg_key = f"status_msg_{selected_session['session_id']}"
+                        if status_msg_key in st.session_state:
+                            st.success(st.session_state.pop(status_msg_key))
+                    except Exception:
+                        # Defensive: if selected_session missing or key malformed, ignore
+                        pass
+
+                    # Show any bulk-results produced for this competition (if present)
+                    bulk_key = f"bulk_results_{str(comp_id)}"
+                    if bulk_key in st.session_state:
+                        results = st.session_state.pop(bulk_key)
+                        st.markdown("") # small gap
+                        st.markdown("##### Completed Status Updates")
+                        col_result1, col_result2, col_result3 = st.columns(3)
+                        with col_result1:
+                            st.metric(":material/done_all: Updated", results['success_count'],
+                                     help=f"Changed to '{results['new_status']}'")
+                        with col_result2:
+                            st.metric(":material/rule: Skipped", results['skipped_count'],
+                                     help="Already at target status")
+                        with col_result3:
+                            st.metric(":material/report: Errors", results['error_count'],
+                                     help="Failed updates")
+                        if results['success_count'] > 0:
+                            st.success(f"Successfully updated {results['success_count']} session(s) to '{results['new_status']}'")
+                        st.markdown("---")  # Separator
         else:
             # Fallback: simple list (no AgGrid)
             st.info("AgGrid not available. Install streamlit-aggrid for enhanced table view.")
             for s in sess_list:
-                st.write(f"- {s['av_number']} — {s['round_name']} ({s['shoot_date']}) [Status: {s['status']}]")
+                formatted_date = _format_date_for_ui(_parse_date(s['shoot_date']))
+                st.write(f"- {s['av_number']} — {s['round_name']} ({formatted_date}) [Status: {s['status']}]")
 
