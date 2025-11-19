@@ -28,8 +28,7 @@ def show_recorder_management():
 
         # Fetch all current members
         members = fetch_all("""
-            SELECT cm.id,
-                   cm.av_number AS AV_Number,
+            SELECT cm.av_number AS AV_Number,
                    cm.full_name AS Name,
                    cm.birth_year AS Birth_Year,
                    g.gender_code AS Gender,
