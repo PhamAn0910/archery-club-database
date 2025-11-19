@@ -120,7 +120,7 @@ def show_recorder_management():
         round_lookup = {r["Name"]: r["id"] for r in rounds} if rounds else {}
         with st.form("add_range_form"):
             selected_round = st.selectbox("Select Round", round_names)
-            distance_m = st.number_input("Distance (m)", 10, 100)
+            distance_m = st.selectbox("Distance (m)", [20, 30, 40, 50, 60, 70, 90])
             face_size = st.selectbox("Face Size (cm)", [80, 122])
             ends_per_range = st.selectbox("Ends per Range", [5, 6])
             submitted = st.form_submit_button("Add Range")
@@ -137,7 +137,7 @@ def show_recorder_management():
                         "ends_per_range": ends_per_range,
                     },
                 )
-                st.success(f"✅ Range added to {selected_round}")
+                #st.success(f"✅ Range added to {selected_round}")
                 st.rerun()
 
     # ==========================================================
@@ -304,5 +304,5 @@ def show_recorder_management():
                         "method": method_value,
                     },
                 )
-                st.success("✅ Round added to championship.")
+                # st.success("✅ Round added to championship.")
                 st.rerun()
