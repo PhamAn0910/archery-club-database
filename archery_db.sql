@@ -63,34 +63,11 @@ CREATE TABLE competition (
     name VARCHAR(64) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    base_round_id INT NULL COMMENT 'Target round template for this competition',
+    base_round_id INT NOT NULL COMMENT 'The one round used in this competition',
     rules_note TEXT NULL,
 
     CONSTRAINT fk_competition_base_round
         FOREIGN KEY (base_round_id)
-        REFERENCES round(id)
-        ON DELETE SET NULL
-) ENGINE=InnoDB;
-
--- -----------------------------------------------------
--- 5b. Table: championship_rule
--- Stores championship configuration logic that links competitions to the
--- specific rounds and scoring method used for ladder calculations.
--- -----------------------------------------------------
-CREATE TABLE championship_rule (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    competition_id INT NOT NULL COMMENT 'Championship competition/event',
-    round_id INT NOT NULL COMMENT 'Eligible round contributing to the ladder',
-    score_count_method TINYINT NOT NULL COMMENT '1 = Best score, 2 = Best + 2nd best',
-
-    UNIQUE KEY uk_championship_rule (competition_id, round_id),
-    CONSTRAINT chk_championship_rule_method CHECK (score_count_method IN (1, 2)),
-    CONSTRAINT fk_championship_rule_competition
-        FOREIGN KEY (competition_id)
-        REFERENCES competition(id)
-        ON DELETE CASCADE,
-    CONSTRAINT fk_championship_rule_round
-        FOREIGN KEY (round_id)
         REFERENCES round(id)
         ON DELETE RESTRICT
 ) ENGINE=InnoDB;
@@ -121,6 +98,46 @@ CREATE TABLE category (
     CONSTRAINT fk_category_division
         FOREIGN KEY (division_id) 
         REFERENCES division(id) 
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+-- -----------------------------------------------------
+-- 5b. Table: championship
+-- Stores championship ladder competitions with category-specific rankings.
+-- -----------------------------------------------------
+CREATE TABLE championship (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    category_id INT NOT NULL COMMENT 'Only archers in this category are ranked',
+    rules_note TEXT NULL,
+    
+    CONSTRAINT fk_championship_category
+        FOREIGN KEY (category_id) 
+        REFERENCES category(id) 
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+-- -----------------------------------------------------
+-- 5c. Table: championship_round
+-- Links championships to specific rounds and defines scoring methods.
+-- -----------------------------------------------------
+CREATE TABLE championship_round (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    championship_id INT NOT NULL,
+    round_id INT NOT NULL,
+    score_count_method TINYINT NOT NULL COMMENT '1 = Best only, 2 = Best + Second',
+    
+    UNIQUE KEY uk_championship_round (championship_id, round_id),
+    CONSTRAINT chk_score_count_method CHECK (score_count_method IN (1, 2)),
+    CONSTRAINT fk_championship_round_championship
+        FOREIGN KEY (championship_id)
+        REFERENCES championship(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_championship_round_round
+        FOREIGN KEY (round_id)
+        REFERENCES round(id)
         ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 

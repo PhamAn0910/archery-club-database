@@ -145,17 +145,13 @@ def show_recorder_management():
     # ==========================================================
     with tabs[2]:
         st.subheader("🏆 Manage Competitions")
-        st.info("Create competitions and assign their base round template.")
+        st.info("Create single-round competitions. All categories can participate.")
 
         comps = fetch_all("""
-            SELECT c.id,
-                   c.name AS Competition,
-                   c.start_date AS Start,
-                   c.end_date AS End,
-                   r.round_name AS Base_Round,
-                   c.rules_note AS Notes
+            SELECT c.id, c.name, c.start_date, c.end_date, 
+                   r.round_name AS base_round, c.rules_note
             FROM competition c
-            LEFT JOIN round r ON r.id = c.base_round_id
+            JOIN round r ON r.id = c.base_round_id
             ORDER BY c.start_date DESC;
         """)
 
@@ -172,17 +168,14 @@ def show_recorder_management():
             start_date = st.date_input("Start Date")
             end_date = st.date_input("End Date")
             base_round_label = st.selectbox(
-                "Base Round (optional)",
-                ["None"] + [r["round_name"] for r in round_options],
-            )
-            base_round_id = (
-                None
-                if base_round_label == "None"
-                else next(r["id"] for r in round_options if r["round_name"] == base_round_label)
+                "Base Round (required)",
+                [r["round_name"] for r in round_options] if round_options else [],
             )
             rules_note = st.text_area("Rules / Notes")
             submitted = st.form_submit_button("Create Competition")
-            if submitted and name:
+            
+            if submitted and name and base_round_label:
+                base_round_id = next(r["id"] for r in round_options if r["round_name"] == base_round_label)
                 exec_sql(
                     """
                     INSERT INTO competition (name, start_date, end_date, base_round_id, rules_note)
@@ -204,69 +197,112 @@ def show_recorder_management():
     # ==========================================================
     with tabs[3]:
         st.subheader("🥇 Manage Championships")
-        st.info("Configure which rounds count towards championship ladders and how scores are aggregated.")
+        st.info("Create multi-round championships with category-specific rankings.")
 
-        competitions = fetch_all(
-            """
-            SELECT id, name, start_date
-            FROM competition
-            ORDER BY start_date DESC;
-            """
-        )
-        championship_rules = fetch_all(
-            """
-            SELECT cr.id,
-                   c.name AS Championship,
-                   r.round_name AS Round,
-                   CASE cr.score_count_method WHEN 1 THEN 'Best 1' ELSE 'Best + 2nd Best' END AS Method
-            FROM championship_rule cr
-            JOIN competition c ON c.id = cr.competition_id
-            JOIN round r ON r.id = cr.round_id
-            ORDER BY c.start_date DESC, r.round_name;
-            """
-        )
+        # ==========================================================
+        # SECTION A: LIST EXISTING CHAMPIONSHIPS
+        # ==========================================================
+        championships = fetch_all("""
+            SELECT ch.id, ch.name, ch.start_date, ch.end_date,
+                   CONCAT(ac.age_class_code, ' ', g.gender_code, ' ', d.bow_type_code) AS category,
+                   COUNT(cr.id) AS num_rounds
+            FROM championship ch
+            JOIN category cat ON cat.id = ch.category_id
+            JOIN age_class ac ON ac.id = cat.age_class_id
+            JOIN gender g ON g.id = cat.gender_id
+            JOIN division d ON d.id = cat.division_id
+            LEFT JOIN championship_round cr ON cr.championship_id = ch.id
+            GROUP BY ch.id, ch.name, ch.start_date, ch.end_date, category
+            ORDER BY ch.start_date DESC;
+        """)
 
-        if championship_rules:
-            st.markdown("#### Current Championship Rules")
-            st.dataframe(pd.DataFrame(championship_rules), use_container_width=True)
+        if championships:
+            st.markdown("#### Current Championships")
+            st.dataframe(pd.DataFrame(championships), use_container_width=True)
         else:
-            st.warning("No championship rules configured yet.")
+            st.warning("No championships configured yet.")
 
+        # ==========================================================
+        # SECTION B: ADD NEW CHAMPIONSHIP
+        # ==========================================================
+        categories = fetch_all("""
+            SELECT cat.id, 
+                   CONCAT(ac.age_class_code, ' - ', g.gender_code, ' - ', d.bow_type_code) AS category_name
+            FROM category cat
+            JOIN age_class ac ON ac.id = cat.age_class_id
+            JOIN gender g ON g.id = cat.gender_id
+            JOIN division d ON d.id = cat.division_id
+            ORDER BY ac.age_class_code, g.gender_code, d.bow_type_code;
+        """)
+
+        st.markdown("#### ➕ Add New Championship")
+        with st.form("add_championship_form"):
+            champ_name = st.text_input("Championship Name")
+            champ_start_date = st.date_input("Start Date", key="champ_start")
+            champ_end_date = st.date_input("End Date", key="champ_end")
+            category_label = st.selectbox(
+                "Category (Age - Gender - Division)",
+                options=[cat["category_name"] for cat in categories] if categories else [],
+            )
+            champ_rules_note = st.text_area("Rules / Notes", key="champ_rules")
+            submitted_champ = st.form_submit_button("Create Championship")
+
+            if submitted_champ and champ_name and category_label:
+                category_id = next(cat["id"] for cat in categories if cat["category_name"] == category_label)
+                exec_sql(
+                    """
+                    INSERT INTO championship (name, start_date, end_date, category_id, rules_note)
+                    VALUES (:name, :start, :end, :category_id, :rules);
+                    """,
+                    {
+                        "name": champ_name,
+                        "start": champ_start_date,
+                        "end": champ_end_date,
+                        "category_id": category_id,
+                        "rules": champ_rules_note,
+                    },
+                )
+                st.success(f"✅ Championship '{champ_name}' created.")
+                st.rerun()
+
+        # ==========================================================
+        # SECTION C: ADD ROUND TO CHAMPIONSHIP
+        # ==========================================================
         round_choices = fetch_all("SELECT id, round_name FROM round ORDER BY round_name;")
-        count_methods = {1: "Best 1", 2: "Best + 2nd Best"}
+        count_methods = {1: "Best 1", 2: "Best + 2nd"}
 
-        st.markdown("#### ➕ Add Championship Rule")
-        with st.form("add_champ_rule_form"):
-            comp_label = st.selectbox(
-                "Select Championship (competition)",
-                options=[f"{c['name']} ({c['start_date']})" for c in competitions] if competitions else [],
+        st.markdown("#### ➕ Add Round to Championship")
+        with st.form("add_champ_round_form"):
+            champ_label = st.selectbox(
+                "Select Championship",
+                options=[f"{ch['name']} ({ch['start_date']})" for ch in championships] if championships else [],
             )
             round_label = st.selectbox(
-                "Eligible Round",
-                options=[r["round_name"] for r in round_choices],
+                "Select Round",
+                options=[r["round_name"] for r in round_choices] if round_choices else [],
             )
             method_label = st.selectbox(
                 "Score Counting Method",
                 options=list(count_methods.values()),
             )
-            submitted = st.form_submit_button("Save Rule")
+            submitted_round = st.form_submit_button("Add Round")
 
-            if submitted and competitions:
-                comp_id = next(c["id"] for c in competitions if f"{c['name']} ({c['start_date']})" == comp_label)
+            if submitted_round and championships and champ_label and round_label:
+                champ_id = next(ch["id"] for ch in championships if f"{ch['name']} ({ch['start_date']})" == champ_label)
                 round_id = next(r["id"] for r in round_choices if r["round_name"] == round_label)
                 method_value = next(k for k, v in count_methods.items() if v == method_label)
 
                 exec_sql(
                     """
-                    INSERT INTO championship_rule (competition_id, round_id, score_count_method)
-                    VALUES (:competition_id, :round_id, :method)
+                    INSERT INTO championship_round (championship_id, round_id, score_count_method)
+                    VALUES (:championship_id, :round_id, :method)
                     ON DUPLICATE KEY UPDATE score_count_method = VALUES(score_count_method);
                     """,
                     {
-                        "competition_id": comp_id,
+                        "championship_id": champ_id,
                         "round_id": round_id,
                         "method": method_value,
                     },
                 )
-                st.success("✅ Championship rule saved.")
+                st.success("✅ Round added to championship.")
                 st.rerun()

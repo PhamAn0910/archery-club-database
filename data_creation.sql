@@ -243,15 +243,15 @@ SET @emma_id = LAST_INSERT_ID();
 --   - Club Championship 2025: Year-long accumulation competition
 --   - October WA 60/900: Single event competition
 -- =====================================================
-INSERT INTO competition (name, start_date, end_date, rules_note) VALUES
+INSERT INTO competition (name, start_date, end_date, base_round_id, rules_note) VALUES
     ('Club Championship 2025',
-     '2025-01-01', '2025-12-31',
+     '2025-01-01', '2025-12-31', 6,
      'Year-long club championship. Best scores accumulated from official rounds throughout the year.'),
     ('October WA 60/900',
-     '2025-10-10', '2025-10-10',
+     '2025-10-10', '2025-10-10', 6,
      'Single event competition using WA60/900 (Canberra) round.'),
     ('Spring Championship',
-     '2025-03-01', '2025-05-31',
+     '2025-03-01', '2025-05-31', 3,
      'Spring season championship covering March to May.');
 
 -- =====================================================
