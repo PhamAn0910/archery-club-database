@@ -63,7 +63,36 @@ CREATE TABLE competition (
     name VARCHAR(64) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    rules_note TEXT NULL
+    base_round_id INT NULL COMMENT 'Target round template for this competition',
+    rules_note TEXT NULL,
+
+    CONSTRAINT fk_competition_base_round
+        FOREIGN KEY (base_round_id)
+        REFERENCES round(id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- -----------------------------------------------------
+-- 5b. Table: championship_rule
+-- Stores championship configuration logic that links competitions to the
+-- specific rounds and scoring method used for ladder calculations.
+-- -----------------------------------------------------
+CREATE TABLE championship_rule (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    competition_id INT NOT NULL COMMENT 'Championship competition/event',
+    round_id INT NOT NULL COMMENT 'Eligible round contributing to the ladder',
+    score_count_method TINYINT NOT NULL COMMENT '1 = Best score, 2 = Best + 2nd best',
+
+    UNIQUE KEY uk_championship_rule (competition_id, round_id),
+    CONSTRAINT chk_championship_rule_method CHECK (score_count_method IN (1, 2)),
+    CONSTRAINT fk_championship_rule_competition
+        FOREIGN KEY (competition_id)
+        REFERENCES competition(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_championship_rule_round
+        FOREIGN KEY (round_id)
+        REFERENCES round(id)
+        ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 -- -----------------------------------------------------
