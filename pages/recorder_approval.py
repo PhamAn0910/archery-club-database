@@ -732,187 +732,195 @@ def show_recorder_approval():
     for s in sessions:
         comp_key = s['competition_id']
         sessions_by_comp.setdefault(comp_key, []).append(s)
+
+    # =====================================================
+    # FIX: USE TABS TO PREVENT AGGRID RENDERING CONFLICTS
+    # =====================================================
     
-    # Per-competition listing
-    for comp_key, sess_list in sessions_by_comp.items():
-        comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
-        comp_name = comp['name'] if comp else f"Competition {comp_key}"
-        comp_end = _parse_date(comp['end_date']) if comp else _today_date()
-        comp_id = comp_key
-        
-        st.markdown("---") # Separator between competitions
-        st.markdown(f"## {comp_name} — ends {_format_date_for_ui(comp_end)}")
-        
-        if HAS_AGGRID and sess_list:
-            # Build dataframe for the grid with Total Score column
-            rows = []
-            for s in sess_list:
-                total = _compute_session_total(s['session_id'])
-                rows.append({
-                    'session_id': s['session_id'],
-                    'av_number': s['av_number'],
-                    'round': s['round_name'],
-                    'shoot_date': _format_date_for_ui(_parse_date(s['shoot_date'])),  # Format for UI
-                    'status': s['status'],
-                    'total': total,
-                })
-            
-            df = pd.DataFrame(rows)
-            
-            gb = GridOptionsBuilder.from_dataframe(df)  # type: ignore
-            # Enable row selection
-            gb.configure_selection(selection_mode='single', use_checkbox=False)
-            # Suppress cell focus to avoid confusing red border on clicked cells
-            gb.configure_grid_options(suppressCellFocus=True)
-            gb.configure_column('session_id', hide=True)
-            gb.configure_column('av_number', header_name='AV Number', width=100)
-            gb.configure_column('round', header_name='Round', width=150)
-            gb.configure_column('shoot_date', header_name='Shoot Date', width=120)
-            gb.configure_column('status', header_name='Status', width=120)
-            gb.configure_column('total', header_name='Total Score', width=120)
-            
-            grid_options = gb.build()
-            
-            # Use a dynamic key to force grid refresh when selection is cleared
-            grid_key = st.session_state.get(f"grid_reload_{comp_id}", 0)
-            
-            grid_response = AgGrid(  # type: ignore
-                df,
-                gridOptions=grid_options,
-                update_mode=GridUpdateMode.SELECTION_CHANGED,  # type: ignore
-                allow_unsafe_jscode=True,
-                enable_enterprise_modules=False,
-                fit_columns_on_grid_load=True,
-                height=min(200 + len(rows) * 35, 500),
-                theme='balham',  # Use balham theme for consistent light appearance
-                key=f"aggrid_{comp_id}_{grid_key}"
-            )
-            
-            # Get selected rows
-            selected_raw = grid_response.get('selected_rows', [])
-            if isinstance(selected_raw, pd.DataFrame):
-                try:
-                    selected = selected_raw.to_dict('records')
-                except Exception:
-                    selected = []
-            elif isinstance(selected_raw, list):
-                selected = selected_raw
-            else:
-                try:
-                    selected = list(selected_raw) if selected_raw is not None else []
-                except Exception:
-                    selected = []
-            
-            # Session state keys for tracking what editor is open
-            session_key = f"editor_session_{comp_id}"
-            
-            # If a row is selected, store the session and show action buttons
-            if len(selected) > 0:
-                try:
-                    sel_id = selected[0].get('session_id')
-                    if sel_id is not None:
-                        st.session_state[session_key] = int(sel_id)
-                except Exception:
-                    st.session_state.pop(session_key, None)
-            
-            # If we have a selected session, show action buttons
-            editor_session_id = st.session_state.get(session_key)
-            if editor_session_id:
-                selected_session = next((s for s in sess_list if s['session_id'] == editor_session_id), None)
-                if selected_session:
-                    st.markdown("") # small gap
-                    st.markdown(f"**Selected:** {selected_session.get('av_number', 'N/A')} — {selected_session['round_name']} ({_format_date_for_ui(_parse_date(selected_session['shoot_date']))})")
-                    
-                    # Determine competition-level protection once per competition.
-                    # If comp_end is in the past, disable editing actions for all sessions in this competition.
-                    protected_comp = (_today_date() > comp_end)
+    # 1. Prepare Data for Tabs
+    # We need ordered lists to match tabs to data
+    active_comp_ids = list(sessions_by_comp.keys())
+    
+    # sort them to ensure consistent order (optional, but good UX)
+    active_comp_ids.sort(reverse=True) 
 
-                    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
-                    with col1:
-                        # View/Edit Score button (view-only if protected)
-                        button_label = "View Score" if protected_comp else "Edit Score"
-                        button_icon = ":material/visibility:" if protected_comp else ":material/edit:"
-                        # Set type="primary" only if this editor is currently showing
-                        is_score_active = st.session_state.get(f"show_score_{comp_id}", False)
-                        if st.button(button_label, key=f"btn_score_{comp_id}_{editor_session_id}", icon=button_icon, use_container_width=True, type="primary" if is_score_active else "secondary"):
-                            st.session_state[f"show_score_{comp_id}"] = True
-                            st.session_state.pop(f"show_status_{comp_id}", None)
-                            st.session_state.pop(f"show_bulk_{comp_id}", None)
-                            st.rerun()
-                    with col2:
-                        # Set type="primary" only if this editor is currently showing
-                        is_status_active = st.session_state.get(f"show_status_{comp_id}", False)
-                        if st.button("Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", icon=":material/swap_horiz:", use_container_width=True, type="primary" if is_status_active else "secondary", disabled=protected_comp):
-                            st.session_state[f"show_status_{comp_id}"] = True
-                            st.session_state.pop(f"show_score_{comp_id}", None)
-                            st.session_state.pop(f"show_bulk_{comp_id}", None)
-                            st.rerun()
-                    with col3:
-                        # Set type="primary" only if this editor is currently showing
-                        is_bulk_active = st.session_state.get(f"show_bulk_{comp_id}", False)
-                        if st.button("Group Approve/Revert", key=f"btn_bulk_{comp_id}_{editor_session_id}", icon=":material/list:", use_container_width=True, type="primary" if is_bulk_active else "secondary", disabled=protected_comp):
-                            st.session_state[f"show_bulk_{comp_id}"] = True
-                            st.session_state.pop(f"show_score_{comp_id}", None)
-                            st.session_state.pop(f"show_status_{comp_id}", None)
-                            st.rerun()
-                    with col4:
-                        if st.button("Clear Selection", key=f"btn_clear_{comp_id}_{editor_session_id}", icon=":material/clear:"):
-                            # Clear all session states related to this competition
-                            st.session_state.pop(session_key, None)
-                            st.session_state.pop(f"show_score_{comp_id}", None)
-                            st.session_state.pop(f"show_status_{comp_id}", None)
-                            st.session_state.pop(f"show_bulk_{comp_id}", None)
-                            # Increment grid reload counter to force recreation with no selection
-                            current_reload = st.session_state.get(f"grid_reload_{comp_id}", 0)
-                            st.session_state[f"grid_reload_{comp_id}"] = current_reload + 1
-                            st.rerun()
-                    
-                    if protected_comp:
-                        st.info("This competition has ended — scores are view-only, status changes are disabled.", icon=":material/lock:")
+    tab_labels = []
+    for cid in active_comp_ids:
+        comp = next((c for c in filtered_competitions if c['id'] == cid), None)
+        c_name = comp['name'] if comp else f"Comp {cid}"
+        tab_labels.append(c_name)
 
-                    # Render the appropriate editor based on button clicks
-                    if st.session_state.get(f"show_score_{comp_id}"):
-                        _render_score_editor(selected_session, comp_end)
-                    elif st.session_state.get(f"show_status_{comp_id}"):
-                        _render_status_editor(selected_session, comp_end)
-                    elif st.session_state.get(f"show_bulk_{comp_id}"):
-                        _render_group_approve_editor(sess_list, comp_end, str(comp_id))
+    # 2. Create Tabs
+    if not active_comp_ids:
+        st.info("No sessions found.")
+        return
 
-                    st.markdown("") #small gap
-                    st.markdown("")
-                    # --- Inline transient messages (appear under the calling UI) ---
-                    # Show any status update message for this particular session
+    tabs = st.tabs(tab_labels)
+
+    # 3. Render Content inside Tabs
+    for i, comp_key in enumerate(active_comp_ids):
+        with tabs[i]:
+            sess_list = sessions_by_comp[comp_key]
+            
+            comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
+            comp_name = comp['name'] if comp else f"Competition {comp_key}"
+            comp_end = _parse_date(comp['end_date']) if comp else _today_date()
+            comp_id = comp_key
+            
+            # Header info
+            st.caption(f"Ends: {_format_date_for_ui(comp_end)}")
+            
+            if HAS_AGGRID and sess_list:
+                # Build dataframe for the grid with Total Score column
+                rows = []
+                for s in sess_list:
+                    total = _compute_session_total(s['session_id'])
+                    rows.append({
+                        'session_id': s['session_id'],
+                        'av_number': s['av_number'],
+                        'round': s['round_name'],
+                        'shoot_date': _format_date_for_ui(_parse_date(s['shoot_date'])),
+                        'status': s['status'],
+                        'total': total,
+                    })
+                
+                df = pd.DataFrame(rows)
+                
+                gb = GridOptionsBuilder.from_dataframe(df)  # type: ignore
+            
+                # FIX: Force columns to fill width using flex=1
+                # min_width prevents them from getting too squashed on small screens
+                gb.configure_default_column(flex=1, min_width=100, resizable=True)
+
+                # Enable row selection
+                gb.configure_selection(selection_mode='single', use_checkbox=False)
+                # Suppress cell focus to avoid confusing red border on clicked cells
+                gb.configure_grid_options(suppressCellFocus=True)
+                
+                gb.configure_column('session_id', hide=True)
+                
+                # Removed explicit 'width' so 'flex=1' takes over
+                gb.configure_column('av_number', header_name='AV Number')
+                gb.configure_column('round', header_name='Round')
+                gb.configure_column('shoot_date', header_name='Shoot Date')
+                gb.configure_column('status', header_name='Status')
+                gb.configure_column('total', header_name='Total Score')
+                
+                grid_options = gb.build()
+                
+                # Use a dynamic key to force grid refresh when selection is cleared
+                grid_key = st.session_state.get(f"grid_reload_{comp_id}", 0)
+                
+                grid_response = AgGrid(  # type: ignore
+                    df,
+                    gridOptions=grid_options,
+                    update_mode=GridUpdateMode.SELECTION_CHANGED,  # type: ignore
+                    allow_unsafe_jscode=True,
+                    enable_enterprise_modules=False,
+                    fit_columns_on_grid_load=True,
+                    height=min(200 + len(rows) * 35, 500),
+                    theme='balham',  # Use balham theme
+                    key=f"aggrid_{comp_id}_{grid_key}"
+                )
+                
+                # Get selected rows
+                selected_raw = grid_response.get('selected_rows', [])
+                if isinstance(selected_raw, pd.DataFrame):
                     try:
-                        status_msg_key = f"status_msg_{selected_session['session_id']}"
-                        if status_msg_key in st.session_state:
-                            st.success(st.session_state.pop(status_msg_key))
+                        selected = selected_raw.to_dict('records')
                     except Exception:
-                        # Defensive: if selected_session missing or key malformed, ignore
-                        pass
-
-                    # Show any bulk-results produced for this competition (if present)
-                    bulk_key = f"bulk_results_{str(comp_id)}"
-                    if bulk_key in st.session_state:
-                        results = st.session_state.pop(bulk_key)
+                        selected = []
+                elif isinstance(selected_raw, list):
+                    selected = selected_raw
+                else:
+                    try:
+                        selected = list(selected_raw) if selected_raw is not None else []
+                    except Exception:
+                        selected = []
+                
+                # Session state keys for tracking what editor is open
+                session_key = f"editor_session_{comp_id}"
+                
+                # If a row is selected, store the session and show action buttons
+                if len(selected) > 0:
+                    try:
+                        sel_id = selected[0].get('session_id')
+                        if sel_id is not None:
+                            st.session_state[session_key] = int(sel_id)
+                    except Exception:
+                        st.session_state.pop(session_key, None)
+                
+                # If we have a selected session, show action buttons
+                editor_session_id = st.session_state.get(session_key)
+                if editor_session_id:
+                    selected_session = next((s for s in sess_list if s['session_id'] == editor_session_id), None)
+                    if selected_session:
                         st.markdown("") # small gap
-                        st.markdown("##### Completed Status Updates")
-                        col_result1, col_result2, col_result3 = st.columns(3)
-                        with col_result1:
-                            st.metric(":material/done_all: Updated", results['success_count'],
-                                     help=f"Changed to '{results['new_status']}'")
-                        with col_result2:
-                            st.metric(":material/rule: Skipped", results['skipped_count'],
-                                     help="Already at target status")
-                        with col_result3:
-                            st.metric(":material/report: Errors", results['error_count'],
-                                     help="Failed updates")
-                        if results['success_count'] > 0:
-                            st.success(f"Successfully updated {results['success_count']} session(s) to '{results['new_status']}'")
-                        st.markdown("---")  # Separator
-        else:
-            # Fallback: simple list (no AgGrid)
-            st.info("AgGrid not available. Install streamlit-aggrid for enhanced table view.")
-            for s in sess_list:
-                formatted_date = _format_date_for_ui(_parse_date(s['shoot_date']))
-                st.write(f"- {s['av_number']} — {s['round_name']} ({formatted_date}) [Status: {s['status']}]")
+                        st.markdown(f"**Selected:** {selected_session.get('av_number', 'N/A')} — {selected_session['round_name']} ({_format_date_for_ui(_parse_date(selected_session['shoot_date']))})")
+                        
+                        # Determine competition-level protection
+                        protected_comp = (_today_date() > comp_end)
 
+                        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+                        with col1:
+                            # View/Edit Score button
+                            button_label = "View Score" if protected_comp else "Edit Score"
+                            button_icon = ":material/visibility:" if protected_comp else ":material/edit:"
+                            is_score_active = st.session_state.get(f"show_score_{comp_id}", False)
+                            if st.button(button_label, key=f"btn_score_{comp_id}_{editor_session_id}", icon=button_icon, use_container_width=True, type="primary" if is_score_active else "secondary"):
+                                st.session_state[f"show_score_{comp_id}"] = True
+                                st.session_state.pop(f"show_status_{comp_id}", None)
+                                st.session_state.pop(f"show_bulk_{comp_id}", None)
+                                st.rerun()
+                        with col2:
+                            is_status_active = st.session_state.get(f"show_status_{comp_id}", False)
+                            if st.button("Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", icon=":material/swap_horiz:", use_container_width=True, type="primary" if is_status_active else "secondary", disabled=protected_comp):
+                                st.session_state[f"show_status_{comp_id}"] = True
+                                st.session_state.pop(f"show_score_{comp_id}", None)
+                                st.session_state.pop(f"show_bulk_{comp_id}", None)
+                                st.rerun()
+                        with col3:
+                            is_bulk_active = st.session_state.get(f"show_bulk_{comp_id}", False)
+                            if st.button("Group Approve/Revert", key=f"btn_bulk_{comp_id}_{editor_session_id}", icon=":material/list:", use_container_width=True, type="primary" if is_bulk_active else "secondary", disabled=protected_comp):
+                                st.session_state[f"show_bulk_{comp_id}"] = True
+                                st.session_state.pop(f"show_score_{comp_id}", None)
+                                st.session_state.pop(f"show_status_{comp_id}", None)
+                                st.rerun()
+                        with col4:
+                            if st.button("Clear Selection", key=f"btn_clear_{comp_id}_{editor_session_id}", icon=":material/clear:"):
+                                st.session_state.pop(session_key, None)
+                                st.session_state.pop(f"show_score_{comp_id}", None)
+                                st.session_state.pop(f"show_status_{comp_id}", None)
+                                st.session_state.pop(f"show_bulk_{comp_id}", None)
+                                current_reload = st.session_state.get(f"grid_reload_{comp_id}", 0)
+                                st.session_state[f"grid_reload_{comp_id}"] = current_reload + 1
+                                st.rerun()
+                        
+                        if protected_comp:
+                            st.info("This competition has ended — scores are view-only.", icon=":material/lock:")
+
+                        # Render the appropriate editor based on button clicks
+                        if st.session_state.get(f"show_score_{comp_id}"):
+                            _render_score_editor(selected_session, comp_end)
+                        elif st.session_state.get(f"show_status_{comp_id}"):
+                            _render_status_editor(selected_session, comp_end)
+                        elif st.session_state.get(f"show_bulk_{comp_id}"):
+                            _render_group_approve_editor(sess_list, comp_end, str(comp_id))
+
+                        # Show transient messages
+                        try:
+                            status_msg_key = f"status_msg_{selected_session['session_id']}"
+                            if status_msg_key in st.session_state:
+                                st.success(st.session_state.pop(status_msg_key))
+                        except Exception:
+                            pass
+
+                        bulk_key = f"bulk_results_{str(comp_id)}"
+                        if bulk_key in st.session_state:
+                            results = st.session_state.pop(bulk_key)
+                            if results['success_count'] > 0:
+                                st.success(f"Updated {results['success_count']} sessions.")
+            else:
+                st.info("AgGrid not available or no sessions.")
+                for s in sess_list:
+                    st.write(f"- {s['av_number']} {s['round_name']}")
