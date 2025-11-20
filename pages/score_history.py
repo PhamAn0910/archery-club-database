@@ -20,6 +20,22 @@ except Exception:  # pragma: no cover - optional dependency
 DATE_FORMAT_UI = "%d-%m-%Y"
 ARROW_CHOICES = ["X", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "M"]
 
+DIVISION_NAME_MAP = {
+    "R": "Recurve",
+    "C": "Compound",
+    "RB": "Recurve Barebow",
+    "CB": "Compound Barebow",
+    "L": "Longbow",
+    "": "No Division",
+}
+
+
+def _division_label(code: str | None) -> str:
+    token = (code or "").strip().upper()
+    friendly = DIVISION_NAME_MAP.get(token, token or "Unknown")
+    suffix = token or "—"
+    return f"{friendly} ({suffix})"
+
 
 # ============================================================================
 # DATA HELPERS
@@ -81,8 +97,7 @@ def _fetch_sessions(member_id: int) -> List[Dict[str, Any]]:
             COALESCE(SUM({_score_sum_case()}), 0) AS total_score
         FROM session s
         JOIN round r ON r.id = s.round_id
-        JOIN club_member cm ON cm.id = s.member_id
-        JOIN division d ON d.id = cm.division_id
+        JOIN division d ON d.id = s.division_id
         LEFT JOIN competition_entry ce ON ce.session_id = s.id
         LEFT JOIN competition comp ON comp.id = ce.competition_id
         LEFT JOIN `end` e ON e.session_id = s.id
@@ -236,6 +251,7 @@ def show_score_history():
     df = pd.DataFrame(sessions)
     df["shoot_date"] = pd.to_datetime(df["shoot_date"]).dt.date
     df["shoot_date_fmt"] = df["shoot_date"].apply(lambda d: d.strftime(DATE_FORMAT_UI))
+    df["division_label"] = df["division_code"].apply(_division_label)
     df["status_label"] = df["status"].map(
         {
             "Preliminary": "🟡 Preliminary",
@@ -303,6 +319,7 @@ def show_score_history():
         "session_id",
         "shoot_date_fmt",
         "round_name",
+        "division_label",
         "status_label",
         "total_score",
         "competition_name",
@@ -312,6 +329,7 @@ def show_score_history():
             "session_id": "Session ID",
             "shoot_date_fmt": "Shoot Date",
             "round_name": "Round",
+            "division_label": "Equipment",
             "status_label": "Status",
             "total_score": "Score",
             "competition_name": "Competition",
@@ -362,10 +380,11 @@ def show_score_history():
     st.subheader(
         f"Session #{selected_row['session_id']} — {selected_row['round_name']} ({selected_row['status_label']})"
     )
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     col_a.write(f"**Shoot date:** {selected_row['shoot_date_fmt']}")
     col_b.write(f"**Score:** {int(selected_row['total_score'])}")
     col_c.write(f"**Competition:** {selected_row['competition_name']}")
+    col_d.write(f"**Equipment:** {selected_row['division_label']}")
 
     action_col1, action_col2, action_col3 = st.columns(3)
     resume_disabled = not bool(selected_row["can_edit"])

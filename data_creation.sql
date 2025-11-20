@@ -261,41 +261,46 @@ INSERT INTO competition (name, start_date, end_date, base_round_id, rules_note) 
 -- =====================================================
 
 -- Session 1: Laura shoots WA60/900 (Confirmed - ready for competition)
-INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, division_id, shoot_date, status) VALUES
     (@laura_id,
      (SELECT id FROM round WHERE round_name = 'WA60/900'),
+    (SELECT division_id FROM club_member WHERE id = @laura_id),
      '2025-10-10',
      'Confirmed'); -- Confirmed score
 SET @session1_id = LAST_INSERT_ID();
 
 -- Session 2: Lotta shoots WA90/1440 (Preliminary - pending recorder approval)
-INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, division_id, shoot_date, status) VALUES
     (@lotta_id,
      (SELECT id FROM round WHERE round_name = 'WA90/1440'),
+    (SELECT division_id FROM club_member WHERE id = @lotta_id),
      '2025-10-11',
      'Preliminary'); -- Preliminary score (needs approval)
 SET @session2_id = LAST_INSERT_ID();
 
 -- Session 3: Jessica shoots Short Canberra (Confirmed)
-INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, division_id, shoot_date, status) VALUES
     (@jessica_id,
      (SELECT id FROM round WHERE round_name = 'Short Canberra'),
+    (SELECT division_id FROM club_member WHERE id = @jessica_id),
      '2025-10-12',
      'Confirmed'); -- Confirmed score
 SET @session3_id = LAST_INSERT_ID();
 
 -- Session 4: Sarah shoots WA60/900 (Confirmed)
-INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, division_id, shoot_date, status) VALUES
     (@sarah_id,
      (SELECT id FROM round WHERE round_name = 'WA60/900'),
+    (SELECT division_id FROM club_member WHERE id = @sarah_id),
      '2025-10-10',
      'Confirmed'); -- Confirmed score
 SET @session4_id = LAST_INSERT_ID();
 
 -- Session 5: Emma shoots Short Canberra (Preliminary)
-INSERT INTO session (member_id, round_id, shoot_date, status) VALUES
+INSERT INTO session (member_id, round_id, division_id, shoot_date, status) VALUES
     (@emma_id,
      (SELECT id FROM round WHERE round_name = 'Short Canberra'),
+    (SELECT division_id FROM club_member WHERE id = @emma_id),
      '2025-10-12',
      'Preliminary'); -- Preliminary score
 SET @session5_id = LAST_INSERT_ID();

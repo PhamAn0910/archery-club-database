@@ -235,6 +235,7 @@ CREATE TABLE session (
     id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
     round_id INT NOT NULL,
+    division_id INT NOT NULL,
     shoot_date DATE NOT NULL,
     status ENUM('Preliminary', 'Final', 'Confirmed') NOT NULL DEFAULT 'Preliminary',
 
@@ -246,6 +247,10 @@ CREATE TABLE session (
     CONSTRAINT fk_session_round
         FOREIGN KEY (round_id) 
         REFERENCES round(id) 
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_session_division
+        FOREIGN KEY (division_id)
+        REFERENCES division(id)
         ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 

@@ -120,7 +120,7 @@ def show_championship_ladder():
           AND s.shoot_date BETWEEN :start_date AND :end_date
           AND s.round_id IN ({round_clause})
           AND m.gender_id = :gender_id
-          AND m.division_id = :division_id
+                    AND s.division_id = :division_id
           AND (:min_birth_year IS NULL OR m.birth_year >= :min_birth_year)
           AND (:max_birth_year IS NULL OR m.birth_year <= :max_birth_year)
         GROUP BY s.id, s.member_id, m.full_name, s.round_id, r.round_name, s.shoot_date

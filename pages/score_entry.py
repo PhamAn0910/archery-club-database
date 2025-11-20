@@ -22,6 +22,22 @@ DATE_FORMAT_UI = "%d-%m-%Y"
 DATE_FORMAT_DB = "%Y-%m-%d"
 ARROW_CHOICES = ["X", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "M"]
 
+DIVISION_NAME_MAP = {
+    "R": "Recurve",
+    "C": "Compound",
+    "RB": "Recurve Barebow",
+    "CB": "Compound Barebow",
+    "L": "Longbow",
+    "": "No Division",
+}
+
+
+def _division_label(code: Optional[str]) -> str:
+    token = (code or "").strip().upper()
+    friendly = DIVISION_NAME_MAP.get(token, token or "Unknown")
+    suffix = token or "—"
+    return f"{friendly} ({suffix})"
+
 @dataclass
 class RoundRange:
     id: int
@@ -77,10 +93,30 @@ def _list_active_competitions() -> List[Dict[str, Any]]:
     )
 
 
-def _create_session(member_id: int, round_id: int, shoot_date: datetime.date) -> int:
+@st.cache_data(ttl=300)
+def _list_divisions() -> List[Dict[str, Any]]:
+    return fetch_all(
+        """
+        SELECT id, bow_type_code
+        FROM division
+        WHERE is_active = TRUE OR bow_type_code = ''
+        ORDER BY CASE WHEN bow_type_code = '' THEN 1 ELSE 0 END, bow_type_code
+        """
+    )
+
+
+def _create_session(member_id: int, round_id: int, division_id: int, shoot_date: datetime.date) -> int:
     exec_sql(
-        "INSERT INTO session (member_id, round_id, shoot_date, status) VALUES (:mid, :rid, :date, 'Preliminary')",
-        {"mid": member_id, "rid": round_id, "date": shoot_date.strftime(DATE_FORMAT_DB)},
+        """
+        INSERT INTO session (member_id, round_id, division_id, shoot_date, status)
+        VALUES (:mid, :rid, :div_id, :date, 'Preliminary')
+        """,
+        {
+            "mid": member_id,
+            "rid": round_id,
+            "div_id": division_id,
+            "date": shoot_date.strftime(DATE_FORMAT_DB),
+        },
     )
     row = fetch_one(
         "SELECT id FROM session WHERE member_id = :mid ORDER BY id DESC LIMIT 1",
@@ -91,18 +127,53 @@ def _create_session(member_id: int, round_id: int, shoot_date: datetime.date) ->
     return int(row["id"])
 
 
+def _find_category_for_session(session_id: int) -> Optional[int]:
+    """Find the appropriate category for a session based on member and session characteristics."""
+    row = fetch_one(
+        """
+        SELECT cat.id
+        FROM session s
+        JOIN club_member cm ON cm.id = s.member_id
+        JOIN category cat ON (
+            cat.gender_id = cm.gender_id 
+            AND cat.division_id = s.division_id
+        )
+        JOIN age_class ac ON ac.id = cat.age_class_id
+        WHERE s.id = :sid
+          AND cm.birth_year BETWEEN ac.min_birth_year AND ac.max_birth_year
+        ORDER BY ac.policy_year DESC
+        LIMIT 1
+        """,
+        {"sid": session_id},
+    )
+    return row["id"] if row else None
+
+
 def _link_session_to_competition(session_id: int, competition_id: Optional[int]) -> None:
     if competition_id:
+        category_id = _find_category_for_session(session_id)
+        if not category_id:
+            raise ValueError(f"Could not determine category for session {session_id}")
+        
         exec_sql(
             """
-            INSERT INTO competition_entry (session_id, competition_id)
-            VALUES (:sid, :cid)
-            ON DUPLICATE KEY UPDATE competition_id = VALUES(competition_id)
+            INSERT INTO competition_entry (session_id, competition_id, category_id)
+            VALUES (:sid, :cid, :cat_id)
+            ON DUPLICATE KEY UPDATE 
+                competition_id = VALUES(competition_id),
+                category_id = VALUES(category_id)
             """,
-            {"sid": session_id, "cid": competition_id},
+            {"sid": session_id, "cid": competition_id, "cat_id": category_id},
         )
     else:
         exec_sql("DELETE FROM competition_entry WHERE session_id = :sid", {"sid": session_id})
+
+
+def _update_session_division(session_id: int, division_id: int) -> None:
+    exec_sql(
+        "UPDATE session SET division_id = :div WHERE id = :sid",
+        {"div": division_id, "sid": session_id},
+    )
 
 
 def _fetch_session(session_id: int, member_id: int) -> Optional[Dict[str, Any]]:
@@ -111,13 +182,16 @@ def _fetch_session(session_id: int, member_id: int) -> Optional[Dict[str, Any]]:
         SELECT s.id,
                s.member_id,
                s.round_id,
+               s.division_id,
                s.status,
                DATE_FORMAT(s.shoot_date, :fmt) AS shoot_date,
                r.round_name,
+               d.bow_type_code AS division_code,
                ce.competition_id,
                c.name AS competition_name
         FROM session s
         JOIN round r ON r.id = s.round_id
+        LEFT JOIN division d ON d.id = s.division_id
         LEFT JOIN competition_entry ce ON ce.session_id = s.id
         LEFT JOIN competition c ON c.id = ce.competition_id
         WHERE s.id = :sid AND s.member_id = :mid
@@ -238,6 +312,7 @@ def _list_member_drafts(member_id: int) -> List[Dict[str, Any]]:
                DATE_FORMAT(s.shoot_date, :fmt) AS shoot_date,
                r.round_name,
                COALESCE(c.name, 'Practice (No Competition)') AS competition_name,
+               d.bow_type_code AS division_code,
                (SELECT COUNT(*) FROM `end` e WHERE e.session_id = s.id) AS ends_done,
                (
                    SELECT SUM(rr.ends_per_range)
@@ -246,6 +321,7 @@ def _list_member_drafts(member_id: int) -> List[Dict[str, Any]]:
                ) AS total_ends
         FROM session s
         JOIN round r ON r.id = s.round_id
+        JOIN division d ON d.id = s.division_id
         LEFT JOIN competition_entry ce ON ce.session_id = s.id
         LEFT JOIN competition c ON c.id = ce.competition_id
         WHERE s.member_id = :mid AND s.status = 'Preliminary'
@@ -350,7 +426,7 @@ def show_score_entry():
 
     session_id = st.session_state.get("score_entry_session_id")
     if not session_id:
-        _render_session_launcher(member_id)
+        _render_session_launcher(member_id, member_ctx)
         return
 
     session = _fetch_session(session_id, member_id)
@@ -371,12 +447,20 @@ def show_score_entry():
     total_ends = _total_expected_ends(session["round_id"])
 
     info_col1, info_col2, info_col3 = st.columns(3)
-    info_col1.metric("Shoot Date", shoot_date_ui)
-    info_col2.metric("Status", _status_badge(session["status"]))
-    info_col3.metric("Competition", session["competition_name"] or "Practice")
+    with info_col1:
+        st.markdown("**Shoot Date**")
+        st.markdown(f"### {shoot_date_ui}")
+    with info_col2:
+        st.markdown("**Status**")
+        st.markdown(f"### {_status_badge(session['status'])}")
+    with info_col3:
+        st.markdown("**Competition**")
+        st.markdown(f"### {session['competition_name'] or 'Practice'}")
 
     card1, card2, card3 = st.columns(3)
-    card1.metric("Round", session["round_name"])
+    with card1:
+        st.markdown("**Round**")
+        st.markdown(f"### {session['round_name']}")
     # Score and Progress metrics are updated in _render_score_editor for better state sync
 
     if session["status"] != "Preliminary":
@@ -388,12 +472,11 @@ def show_score_entry():
             st.success("Draft deleted.")
             st.rerun()
 
-    _render_competition_linker(session)
     _render_score_editor(session, ranges, total_ends, card2, card3)
     _render_summary_table(session_id)
 
 
-def _render_session_launcher(member_id: int) -> None:
+def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]]) -> None:
     st.subheader("Start or resume a session")
     tab_new, tab_resume = st.tabs(["✨ New Session", "⏳ Drafts"])
 
@@ -401,6 +484,11 @@ def _render_session_launcher(member_id: int) -> None:
         rounds = _list_rounds()
         if not rounds:
             st.info("No rounds are configured yet. Please ask an admin to add some.")
+            return
+
+        divisions = _list_divisions()
+        if not divisions:
+            st.info("No equipment divisions are available. Please contact a recorder.")
             return
 
         round_labels = {
@@ -412,14 +500,34 @@ def _render_session_launcher(member_id: int) -> None:
             label = f"{comp['name']} (ends {datetime.datetime.strptime(comp['end_fmt'], DATE_FORMAT_DB).strftime(DATE_FORMAT_UI)})"
             comp_labels[label] = comp["id"]
 
+        division_labels: Dict[str, int] = {}
+        default_division_id = (member_ctx or {}).get("division_id")
+        default_idx = 0
+        for idx, div in enumerate(divisions):
+            label = _division_label(div["bow_type_code"])
+            division_labels[label] = div["id"]
+            if div["id"] == default_division_id:
+                default_idx = idx
+
         with st.form("start_session_form"):
             shoot_date = st.date_input("Shoot date", value=datetime.date.today())
             round_choice = st.selectbox("Round", list(round_labels.keys()))
             comp_choice = st.selectbox("Competition (optional)", list(comp_labels.keys()))
+            equipment_choice = st.selectbox(
+                "Equipment for this session",
+                list(division_labels.keys()),
+                index=min(default_idx, len(division_labels) - 1),
+                help="Use this to record the bow/division actually used on the day.",
+            )
             submitted = st.form_submit_button("Start Session", width="stretch")
 
         if submitted:
-            new_session_id = _create_session(member_id, round_labels[round_choice], shoot_date)
+            new_session_id = _create_session(
+                member_id,
+                round_labels[round_choice],
+                division_labels[equipment_choice],
+                shoot_date,
+            )
             comp_id = comp_labels[comp_choice]
             if comp_id:
                 _link_session_to_competition(new_session_id, comp_id)
@@ -434,6 +542,8 @@ def _render_session_launcher(member_id: int) -> None:
             return
 
         df = pd.DataFrame(drafts)
+        if not df.empty and "division_code" in df:
+            df["Division"] = df["division_code"].apply(_division_label)
         df = df.rename(
             columns={
                 "session_id": "Session ID",
@@ -444,20 +554,44 @@ def _render_session_launcher(member_id: int) -> None:
                 "total_ends": "Total Ends",
             }
         )
+        if "division_code" in df:
+            df = df.drop(columns=["division_code"])
+        desired_cols = [
+            "Session ID",
+            "Shoot Date",
+            "Round",
+            "Division",
+            "Competition",
+            "Ends Done",
+            "Total Ends",
+        ]
+        df = df[[col for col in desired_cols if col in df.columns]]
 
         selected_id: Optional[int] = None
         if HAS_AGGRID:
             builder = GridOptionsBuilder.from_dataframe(df)
-            builder.configure_selection("single", use_checkbox=True)
+            builder.configure_selection("single", use_checkbox=False)
             builder.configure_column("Session ID", hide=True)
             grid = AgGrid(
                 df,
                 gridOptions=builder.build(),
                 update_mode=GridUpdateMode.SELECTION_CHANGED,
                 height=300,
+                allow_unsafe_jscode=True,
+                theme="streamlit",
             )
-            if grid.get("selected_rows"):
-                selected_id = int(grid["selected_rows"][0]["Session ID"])
+            
+            selected_rows = grid.get("selected_rows")
+            if selected_rows is not None and len(selected_rows) > 0:
+                if isinstance(selected_rows, pd.DataFrame):
+                    row = selected_rows.iloc[0]
+                else:
+                    row = selected_rows[0]
+                    
+                selected_id = int(row["Session ID"])
+                st.session_state.score_entry_session_id = selected_id
+                st.session_state.score_entry_resume_notice = "Draft loaded."
+                st.rerun()
         else:
             st.dataframe(df, width="stretch")
             selected_id = st.selectbox(
@@ -466,10 +600,10 @@ def _render_session_launcher(member_id: int) -> None:
                 format_func=lambda v: "--" if v is None else f"Session {v}",
             )
 
-        if selected_id and st.button("Resume draft", width="stretch"):
-            st.session_state.score_entry_session_id = selected_id
-            st.session_state.score_entry_resume_notice = "Draft loaded."
-            st.rerun()
+            if selected_id and st.button("Resume draft", width="stretch"):
+                st.session_state.score_entry_session_id = selected_id
+                st.session_state.score_entry_resume_notice = "Draft loaded."
+                st.rerun()
 
 
 def _render_competition_linker(session: Dict[str, Any]) -> None:
@@ -492,6 +626,57 @@ def _render_competition_linker(session: Dict[str, Any]) -> None:
             _link_session_to_competition(session["id"], chosen_id)
             st.session_state.score_entry_resume_notice = "Competition link updated."
             st.rerun()
+
+
+def _render_equipment_selector(
+    session: Dict[str, Any], editable: bool, member_ctx: Optional[Dict[str, Any]]
+) -> None:
+    with st.expander("Equipment for this session", expanded=False):
+        divisions = _list_divisions()
+        if not divisions:
+            st.info("No equipment divisions configured. Please contact a recorder.")
+            return
+
+        label_to_id: Dict[str, int] = {}
+        options: List[str] = []
+        current_idx = 0
+        for idx, div in enumerate(divisions):
+            label = _division_label(div["bow_type_code"])
+            options.append(label)
+            label_to_id[label] = div["id"]
+            if div["id"] == session.get("division_id"):
+                current_idx = idx
+
+        profile_label = _division_label(member_ctx.get("bow_type_code") if member_ctx else None)
+        st.caption(f"Profile default: {profile_label}")
+
+        selection = st.selectbox(
+            "Equipment used",
+            options=options,
+            index=min(current_idx, len(options) - 1),
+            disabled=not editable,
+        )
+        chosen_id = label_to_id.get(selection, session.get("division_id"))
+        needs_update = chosen_id != session.get("division_id")
+        if not editable:
+            st.caption("Session is locked; equipment can't be changed.")
+            return
+
+        st.button(
+            "Update equipment",
+            key=f"equip_{session['id']}",
+            type="secondary",
+            disabled=not needs_update,
+            on_click=lambda: _apply_equipment_update(session["id"], chosen_id),
+        )
+
+
+def _apply_equipment_update(session_id: int, division_id: Optional[int]) -> None:
+    if division_id is None:
+        return
+    _update_session_division(session_id, division_id)
+    st.session_state.score_entry_resume_notice = "Equipment updated."
+    st.rerun()
 
 
 def _nav_callback(
@@ -618,14 +803,22 @@ def _render_score_editor(
 
     # Update global metrics
     current_score = _compute_session_total(session_id)
-    score_col.metric("Score", current_score)
+    with score_col:
+        st.markdown("**Score**")
+        st.markdown(f"### {current_score}")
 
-    progress_col.metric("Progress", f"{selected_end}/{current_range.ends_per_range} ends")
+    with progress_col:
+        st.markdown("**Progress**")
+        st.markdown(f"### {selected_end}/{current_range.ends_per_range} ends")
 
     end_total = sum(_score_from_value(val) for val in arrow_values)
     summary_col1, summary_col2 = st.columns(2)
-    summary_col1.metric("End Score", end_total)
-    summary_col2.metric("Session Total", current_score)
+    with summary_col1:
+        st.markdown("**End Score**")
+        st.markdown(f"### {end_total}")
+    with summary_col2:
+        st.markdown("**Session Total**")
+        st.markdown(f"### {current_score}")
 
     # Navigation buttons
     nav_col1, nav_col2 = st.columns(2)

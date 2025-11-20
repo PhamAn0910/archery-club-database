@@ -37,6 +37,7 @@ def show_club_records():
                 s.member_id,
                 s.round_id,
                 s.shoot_date,
+                s.division_id,
                 SUM({_score_sum_case()}) AS total_score
             FROM session s
             JOIN `end` e ON e.session_id = s.id
@@ -63,7 +64,7 @@ def show_club_records():
             FROM session_totals st
             JOIN club_member m ON m.id = st.member_id
             JOIN gender g ON g.id = m.gender_id
-            JOIN division d ON d.id = m.division_id
+            JOIN division d ON d.id = st.division_id
             JOIN age_class ac ON m.birth_year BETWEEN ac.min_birth_year AND ac.max_birth_year
         )
         SELECT 
