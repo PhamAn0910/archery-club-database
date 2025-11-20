@@ -11,7 +11,8 @@ except Exception:
 from pages.round_definitions import show_round_definitions
 from pages.score_entry import show_score_entry
 from pages.score_history import show_score_history
-from pages.pbs_records import show_pbs_records
+from pages.club_records import show_club_records
+from pages.my_pbs import show_my_personal_bests
 from pages.competition_results import show_competition_results
 from pages.championship_ladder import show_championship_ladder
 from pages.recorder_approval import show_recorder_approval
@@ -52,7 +53,8 @@ page_renderers = {
     "home": show_round_definitions,
     "score_entry": show_score_entry,
     "score_history": show_score_history,
-    "pbs_records": show_pbs_records,
+    "club_records": show_club_records,
+    "my_pbs": show_my_personal_bests,
     "competition_results": show_competition_results,
     "championship_ladder": show_championship_ladder,
     "recorder_approval": show_recorder_approval,

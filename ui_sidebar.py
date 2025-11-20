@@ -43,12 +43,13 @@ def _load_sidebar_css() -> str:
 PUBLIC_PAGES = [
     ("Competition Results", "competition_results"),
     ("Club Championship", "championship_ladder"),
+    ("Club PBs", "club_records"),
 ]
 
 ARCHER_PAGES = [
     ("🎯 Score Entry", "score_entry"),
     ("📊 My Scores", "score_history"),
-    ("🏅 Personal Bests", "pbs_records"),
+    ("🏅 Personal Bests", "my_pbs"),
 ]
 
 RECORDER_PAGES = [
