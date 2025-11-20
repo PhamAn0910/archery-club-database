@@ -170,3 +170,8 @@ hr {
   background-color: #FFFFFF !important;
   color: #111111 !important;
 }
+
+
+[data-baseweb="select"] > div {
+  border-color: #A8A8A8 !important;
+}
