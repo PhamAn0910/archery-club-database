@@ -41,19 +41,20 @@ def _load_sidebar_css() -> str:
 
 # Page identifiers for navigation
 PUBLIC_PAGES = [
-    ("Competition Results", "competition_results"),
-    ("Club Championship", "championship_ladder"),
+    (":material/leaderboard: Competition Results", "competition_results"),
+    (":material/social_leaderboard: Club Championship", "championship_ladder"),
+    (":material/rewarded_ads: Round Bests", "club_pbs"),
 ]
 
 ARCHER_PAGES = [
-    ("🎯 Score Entry", "score_entry"),
-    ("📊 My Scores", "score_history"),
-    ("🏅 Personal Bests", "pbs_records"),
+    (":material/target: Score Entry", "score_entry"),
+    (":material/bar_chart_4_bars: My Scores", "score_history"),
+    (":material/workspace_premium: Personal Bests", "pbs_records"),
 ]
 
 RECORDER_PAGES = [
-    ("✅ Approve Scores", "recorder_approval"),
-    ("⚙️ Manage Club", "recorder_management"),
+    (":material/done_all: Approve Scores", "recorder_approval"),
+    (":material/manage_accounts: Manage Club", "recorder_management"),
 ]
 
 # ---------- Lightweight auth model ----------
@@ -103,7 +104,7 @@ def _visible_sections(auth: AuthState) -> dict[str, list[tuple[str, str]]]:
     Build a pure data model of navigation sections -> [(label, page_id), ...]
     """
     sections = {
-        "Home": [("Home", "home")],
+        "Home": [(":material/home: Home", "home")],
         "Public": PUBLIC_PAGES.copy(),
     }
 
@@ -153,39 +154,10 @@ def _render_login_panel(auth: AuthState) -> None:
         key="ui.login_member_id",
     )
 
-    # Inject a small client-side script that submits the login when the
-    # user presses Enter while focused in the Member ID input. This uses
-    # the input's aria-label to locate it and clicks the visible 'Log in'
-    # button; it doesn't change layout or widget types.
-    components.html(
-        """
-        <script>
-        (function(){
-          const tryAttach = () => {
-            const input = document.querySelector('input[aria-label="Member ID"]');
-            const btn = Array.from(document.querySelectorAll('button')).find(b=>b.innerText && b.innerText.trim()==='Log in');
-            if(input && btn){
-              input.addEventListener('keydown', function(e){
-                if(e.key === 'Enter'){
-                  btn.click();
-                }
-              });
-              return true;
-            }
-            return false;
-          };
-          const timer = setInterval(()=>{ if(tryAttach()) clearInterval(timer); }, 200);
-          setTimeout(()=>clearInterval(timer), 5000);
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
     # Render the login button outside of any form so it's not styled by
     # Streamlit's form submit variants (this helps avoid OS dark-mode visual
     # treatments on the submit control).
-    if st.button("Log in", use_container_width=True, key="ui.login_submit", type="secondary"):
+    if st.button("Log in", use_container_width=True, key="ui.login_submit", type="tertiary"):
         # Explicit None check first (clear, local validation). This avoids
         # catching unrelated exceptions and communicates intent.
         if member_id is None:
@@ -226,7 +198,7 @@ def _render_profile_panel(auth: AuthState) -> None:
     st.markdown(_profile_card_html(auth), unsafe_allow_html=True)
 
     # Logout button below the card. Keep event handling here (loose coupling)
-    if st.button("⤴ Logout", use_container_width=True, key="ui.logout_submit", type="secondary"):
+    if st.button("⤴ Logout", use_container_width=True, key="ui.logout_submit", type="tertiary"):
         _reset_auth()
         st.rerun()
 
@@ -277,11 +249,12 @@ def _render_section(section_name: str, links: list[tuple[str, str]]) -> None:
         st.markdown(f'<div class="section-header">{section_name}</div>', unsafe_allow_html=True)
 
     for label, page_id in links:
-        # Wrap each button in a container to allow precise CSS targeting.
-        container_key = f"nav_container_{page_id}"
-        st.markdown(f'<div class="nav-button" id="{container_key}"></div>', unsafe_allow_html=True)
-        if st.button(label, key=f"nav_{page_id}", use_container_width=True,
-                     type="primary" if st.session_state.get("current_page") == page_id else "secondary"):
+        if st.button(
+            label,
+            key=f"nav_{page_id}",
+            use_container_width=True,
+            type="primary" if st.session_state.get("current_page") == page_id else "secondary",
+        ):
             st.session_state.current_page = page_id
             st.rerun()
 
@@ -318,10 +291,13 @@ def render_sidebar() -> None:
 
         # Sidebar wrapper. Keep it minimal (no inline logo) so spacing
         # is controlled entirely via CSS.
-        st.markdown('<div id="custom-sidebar">', unsafe_allow_html=True)
+        # st.markdown('<div id="custom-sidebar">', unsafe_allow_html=True)
 
         st.markdown("<h2>Archery Club</h2>", unsafe_allow_html=True)
-        st.markdown("---")
+        # Divider under the title 
+        st.markdown('<hr class="title-divider">',
+            unsafe_allow_html=True,
+        )
 
         # Auth area
         if auth.logged_in:
@@ -329,104 +305,19 @@ def render_sidebar() -> None:
         else:
             _render_login_panel(auth)
 
-        st.markdown("---")
+        # Section separator
+        st.markdown('<hr class="section-divider">',
+            unsafe_allow_html=True,
+        )
 
         # Nav (computed as pure data, then rendered)
         sections = _visible_sections(auth)
         _render_nav(sections)
 
-        st.markdown("---")
+        # Footer rule
+        st.markdown(
+            '<hr class="footer-divider">',
+            unsafe_allow_html=True,
+        )
         st.caption("©2025 Powerpuff Girls Group")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Use MutationObserver with more aggressive button detection
-        components.html(
-            """
-            <script>
-            (function(){
-              console.log('🚀 Script started');
-              
-              const parentDoc = window.parent.document;
-              console.log('📄 Parent document:', parentDoc ? 'FOUND' : 'NOT FOUND');
-              
-              function styleAuthButtons() {
-                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
-                if (!sidebar) {
-                  console.log('⚠️ Sidebar not found');
-                  return 0;
-                }
-                
-                // Find ALL buttons in sidebar (not just .stButton > button)
-                const buttons = Array.from(sidebar.querySelectorAll('button'));
-                console.log('🔍 Total buttons found:', buttons.length);
-                
-                buttons.forEach((btn, i) => {
-                  console.log(`  Button ${i}:`, (btn.innerText || '').substring(0, 30), '| kind:', btn.getAttribute('kind'));
-                });
-                
-                const authButtons = buttons.filter(btn => {
-                  const text = (btn.innerText || '').trim();
-                  return text === 'Log in' || text.includes('Logout');
-                });
-                
-                console.log('🔐 Auth buttons found:', authButtons.length);
-                
-                authButtons.forEach(btn => {
-                  const text = btn.innerText.trim();
-                  console.log('🎨 Styling:', text);
-                  
-                  btn.classList.add('auth-button');
-                  
-                  // FORCE style with setAttribute
-                  btn.setAttribute('style', 
-                    'background: #e8e8ea !important; ' +
-                    'background-color: #e8e8ea !important; ' +
-                    'border: 1px solid rgba(0, 0, 0, 0.08) !important; ' +
-                    'color: #111111 !important; ' +
-                    'font-weight: 600 !important; ' +
-                    'padding: 8px 12px !important; ' +
-                    'border-radius: 8px !important;'
-                  );
-                  
-                  const computedBg = window.getComputedStyle(btn).backgroundColor;
-                  console.log('✅ Applied! Computed bg:', computedBg);
-                });
-                
-                return authButtons.length;
-              }
-              
-              // Multiple attempts with increasing delays
-              const delays = [100, 300, 500, 800, 1200, 2000, 3000];
-              delays.forEach(delay => {
-                setTimeout(() => {
-                  console.log(`⏱️ Attempt at ${delay}ms`);
-                  const count = styleAuthButtons();
-                  if (count > 0) {
-                    console.log(`🎉 SUCCESS at ${delay}ms! Styled ${count} buttons`);
-                  }
-                }, delay);
-              });
-              
-              // MutationObserver on entire sidebar
-              const observer = new MutationObserver((mutations) => {
-                console.log('🔄 Mutation detected, re-checking...');
-                styleAuthButtons();
-              });
-              
-              setTimeout(() => {
-                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
-                if (sidebar) {
-                  observer.observe(sidebar, { 
-                    childList: true, 
-                    subtree: true,
-                    attributes: false
-                  });
-                  console.log('👀 Observer active');
-                }
-              }, 50);
-              
-            })();
-            </script>
-            """,
-            height=0,
-        )

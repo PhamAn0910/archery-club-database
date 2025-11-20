@@ -5,7 +5,7 @@ edit arrow values (6 arrows per end), change status, and confirm sessions.
 All edits persist to the archery_db via db_core.
 
 Features implemented:
-- Filter by competition or show unassigned sessions.
+- Filter by competition to review entered sessions.
 - Clickable AgGrid table showing AV number, round, shoot date, status, and total score.
 - Click on a row to select it, then use action buttons:
   - Edit Score: opens score editor with range selection, end navigation, and arrow editing
@@ -16,6 +16,10 @@ Features implemented:
 - Editing protections: Sessions locked after competition end date.
 - Shows all available competitions and all club members with their scores.
 - Date display format: dd-mm-yyyy (UI), yyyy-mm-dd (database/backend).
+
+Note: Sessions are a database normalization concept. In the UI, they represent 
+an archer's score for a round shot on a specific date, which is then linked 
+to one or more competitions via competition_entry table.
 """
 
 # =====================================================
@@ -605,32 +609,6 @@ def show_recorder_approval():
                     icon=":material/warning:"
                 )
     
-    # Check for upcoming unassigned session deadlines (Preliminary/Final sessions)
-    # Excludes sessions ending today (only warns for sessions ending 1-2 days from now)
-    unassigned_sessions_ending_soon = fetch_all("""
-        SELECT s.id, s.shoot_date, r.round_name
-        FROM session s
-        JOIN round r ON r.id = s.round_id
-        WHERE s.id NOT IN (SELECT session_id FROM competition_entry)
-          AND s.status IN ('Preliminary', 'Final')
-          AND s.shoot_date > :today
-          AND s.shoot_date <= :warning_date
-        ORDER BY s.shoot_date ASC
-    """, params={
-        'today': today.strftime(DATE_FORMAT_DB),
-        'warning_date': (today + datetime.timedelta(days=DAYS_BEFORE_WARNING)).strftime(DATE_FORMAT_DB)
-    })
-    
-    if unassigned_sessions_ending_soon:
-        session_list = ", ".join([
-            f"{s['round_name']} on {_format_date_for_ui(_parse_date(s['shoot_date']))}"
-            for s in unassigned_sessions_ending_soon
-        ])
-        days_until = (min([_parse_date(s['shoot_date']) for s in unassigned_sessions_ending_soon]) - today).days
-        st.warning(
-            f"⚠ **Unassigned sessions** ending in {days_until}-{DAYS_BEFORE_WARNING} day(s) with status Preliminary/Final: {session_list}"
-        )
-    
     # Competition filters
     st.markdown("#### Filter Competitions")
     col_filter1, col_filter2, col_filter3 = st.columns(3)
@@ -703,15 +681,8 @@ def show_recorder_approval():
         help="Leave empty to show all rounds"
     )
     
-    # Option to show sessions not yet entered into competitions
-    show_unassigned = st.checkbox(
-        "Also show sessions not yet entered into any competition", 
-        value=False,
-        help="Show all sessions that haven't been linked to any competition yet"
-    )
-    
-    if not selected and not show_unassigned:
-        st.info("Select at least one competition or check 'Show unassigned sessions' to proceed.")
+    if not selected:
+        st.info("Select at least one competition to proceed.")
         return
     
     # Fetch sessions based on selection
@@ -744,31 +715,6 @@ def show_recorder_approval():
         """, params={'ids': tuple(selected_ids), **round_params})
         sessions.extend(comp_sessions)
     
-    if show_unassigned:
-        # Build round filter condition for unassigned
-        round_filter_sql = ""
-        round_params = {}
-        if selected_rounds:
-            round_filter_sql = "AND r.round_name IN :round_names"
-            round_params = {'round_names': tuple(selected_rounds)}
-        
-        # Load sessions that are NOT entered into any competition
-        # Sort by shoot_date ASC so sessions that end first come first
-        unassigned_sessions = fetch_all(f"""
-            SELECT s.id AS session_id, s.member_id, s.round_id,
-                   DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
-                   s.status, NULL AS competition_id, 'Unassigned' AS competition_name,
-                   NULL AS comp_end_date,
-                   r.round_name, cm.full_name AS member_name, cm.av_number
-            FROM session s
-            JOIN round r ON r.id = s.round_id
-            JOIN club_member cm ON cm.id = s.member_id
-            LEFT JOIN competition_entry ce ON ce.session_id = s.id
-            WHERE ce.session_id IS NULL {round_filter_sql}
-            ORDER BY s.shoot_date ASC, cm.full_name
-        """, params=round_params)
-        sessions.extend(unassigned_sessions)
-    
     if not sessions:
         st.info("No sessions found for the selected competitions.")
         return
@@ -781,23 +727,18 @@ def show_recorder_approval():
         if not s.get('av_number'):
             s['av_number'] = f"ID{s['member_id']}"
     
-    # Group by competition id (unassigned sessions get grouped separately)
+    # Group by competition id
     sessions_by_comp: Dict[str, List[Dict]] = {}
     for s in sessions:
-        comp_key = s['competition_id'] if s['competition_id'] is not None else 'unassigned'
+        comp_key = s['competition_id']
         sessions_by_comp.setdefault(comp_key, []).append(s)
     
     # Per-competition listing
     for comp_key, sess_list in sessions_by_comp.items():
-        if comp_key == 'unassigned':
-            comp_name = "⋮≡ Unassigned Sessions"
-            comp_end = _today_date()
-            comp_id = 'unassigned'
-        else:
-            comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
-            comp_name = comp['name'] if comp else str(comp_key)
-            comp_end = _parse_date(comp['end_date']) if comp else _today_date()
-            comp_id = comp_key
+        comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
+        comp_name = comp['name'] if comp else f"Competition {comp_key}"
+        comp_end = _parse_date(comp['end_date']) if comp else _today_date()
+        comp_id = comp_key
         
         st.markdown("---") # Separator between competitions
         st.markdown(f"## {comp_name} — ends {_format_date_for_ui(comp_end)}")
@@ -891,19 +832,25 @@ def show_recorder_approval():
                         # View/Edit Score button (view-only if protected)
                         button_label = "View Score" if protected_comp else "Edit Score"
                         button_icon = ":material/visibility:" if protected_comp else ":material/edit:"
-                        if st.button(button_label, key=f"btn_score_{comp_id}_{editor_session_id}", icon=button_icon, use_container_width=True):
+                        # Set type="primary" only if this editor is currently showing
+                        is_score_active = st.session_state.get(f"show_score_{comp_id}", False)
+                        if st.button(button_label, key=f"btn_score_{comp_id}_{editor_session_id}", icon=button_icon, use_container_width=True, type="primary" if is_score_active else "secondary"):
                             st.session_state[f"show_score_{comp_id}"] = True
                             st.session_state.pop(f"show_status_{comp_id}", None)
                             st.session_state.pop(f"show_bulk_{comp_id}", None)
                             st.rerun()
                     with col2:
-                        if st.button("Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", icon=":material/swap_horiz:", use_container_width=True, disabled=protected_comp):
+                        # Set type="primary" only if this editor is currently showing
+                        is_status_active = st.session_state.get(f"show_status_{comp_id}", False)
+                        if st.button("Change Status", key=f"btn_status_{comp_id}_{editor_session_id}", icon=":material/swap_horiz:", use_container_width=True, type="primary" if is_status_active else "secondary", disabled=protected_comp):
                             st.session_state[f"show_status_{comp_id}"] = True
                             st.session_state.pop(f"show_score_{comp_id}", None)
                             st.session_state.pop(f"show_bulk_{comp_id}", None)
                             st.rerun()
                     with col3:
-                        if st.button("Group Approve/Revert", key=f"btn_bulk_{comp_id}_{editor_session_id}", icon=":material/list:", use_container_width=True, disabled=protected_comp):
+                        # Set type="primary" only if this editor is currently showing
+                        is_bulk_active = st.session_state.get(f"show_bulk_{comp_id}", False)
+                        if st.button("Group Approve/Revert", key=f"btn_bulk_{comp_id}_{editor_session_id}", icon=":material/list:", use_container_width=True, type="primary" if is_bulk_active else "secondary", disabled=protected_comp):
                             st.session_state[f"show_bulk_{comp_id}"] = True
                             st.session_state.pop(f"show_score_{comp_id}", None)
                             st.session_state.pop(f"show_status_{comp_id}", None)

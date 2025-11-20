@@ -1,0 +1,15 @@
+[theme]
+base = "light"  # base archetype; we override details below
+showWidgetBorder = true
+backgroundColor = "#FFFFFF"     # same as light on purpose
+primaryColor = "#030213"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#111828"
+borderColor = "#A8A8A8"
+
+[theme.sidebar]
+backgroundColor = "#E1E1E1"  
+
+[client]
+showSidebarNavigation = false
+toolbarMode = "developer" 

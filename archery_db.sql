@@ -98,17 +98,24 @@ CREATE TABLE category (
 -- -----------------------------------------------------
 -- 7a. Table: club_member
 -- Stores the archer and recorder details.
+-- Notes:
+--   - Recorders: Store only essential info (no av_number, no division_id)
+--   - Archers: Must have av_number (auto-generated) and division_id
+--   - av_number is NULL for recorders (they don't compete)
+--   - division_id is NULL for recorders (they don't have a bow type)
 -- -----------------------------------------------------
 CREATE TABLE club_member (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    av_number VARCHAR(16) UNIQUE,    -- e.g., 'VIC123', generated at database level (see below)
+    av_number VARCHAR(16) UNIQUE,    -- e.g., 'VIC123', NULL for recorders, auto-generated for archers
     full_name VARCHAR(100) NOT NULL,
     birth_year YEAR NOT NULL,
     gender_id INT NOT NULL,
-    division_id INT NOT NULL,
+    division_id INT NULL,            -- NULL for recorders, required for archers
     is_recorder BOOLEAN NOT NULL DEFAULT FALSE, -- role column: TRUE if recorder, FALSE if archer
 
-    UNIQUE KEY uk_member_identity (full_name, birth_year, gender_id, division_id),
+    -- A member is uniquely identified by name, birth year, and gender
+    -- Division is excluded from uniqueness as recorders don't have one
+    UNIQUE KEY uk_member_identity (full_name, birth_year, gender_id),
 
     -- Foreign Key constraints
     CONSTRAINT fk_member_gender
@@ -118,7 +125,12 @@ CREATE TABLE club_member (
     CONSTRAINT fk_member_division
         FOREIGN KEY (division_id) 
         REFERENCES division(id) 
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+    
+    -- Business rule: Archers must have division, recorders must not
+    CONSTRAINT chk_archer_has_division
+        CHECK ((is_recorder = FALSE AND division_id IS NOT NULL) OR 
+               (is_recorder = TRUE AND division_id IS NULL))
 ) ENGINE=InnoDB AUTO_INCREMENT = 100000;
 
 -- -----------------------------------------------------
@@ -142,15 +154,21 @@ DELIMITER ;
 
 -- -----------------------------------------------------
 -- Trigger: before_insert_club_member
--- Auto-generates AV number if not provided on insert
+-- Auto-generates AV number for archers (not recorders) if not provided on insert
 -- -----------------------------------------------------
 DELIMITER $$
 CREATE TRIGGER before_insert_club_member
 BEFORE INSERT ON club_member
 FOR EACH ROW
 BEGIN
-    IF NEW.av_number IS NULL OR NEW.av_number = '' THEN
-        SET NEW.av_number = generate_unique_av_number();
+    -- Only generate AV number for archers (is_recorder = FALSE)
+    IF NEW.is_recorder = FALSE THEN
+        IF NEW.av_number IS NULL OR NEW.av_number = '' THEN
+            SET NEW.av_number = generate_unique_av_number();
+        END IF;
+    ELSE
+        -- Ensure recorders don't get an AV number
+        SET NEW.av_number = NULL;
     END IF;
 END$$
 DELIMITER ;
@@ -183,7 +201,12 @@ CREATE TABLE round_range (
 
 -- -----------------------------------------------------
 -- 9. Table: session
--- Represents a single shooting session (a "scoresheet") for an archer.
+-- Represents a single shooting session (a "scoresheet") for an archer on a specific date.
+-- Notes:
+--   - This is a normalized table to avoid data duplication
+--   - Each session records one archer shooting one round on one date
+--   - Status tracks the approval state: Preliminary -> Final -> Confirmed
+--   - Sessions can be linked to competitions via competition_entry table
 -- -----------------------------------------------------
 CREATE TABLE session (
     id INT AUTO_INCREMENT PRIMARY KEY,

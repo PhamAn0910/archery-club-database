@@ -1,85 +1,87 @@
-/* =============================================================================
-   SIDEBAR STYLES - Modular, scoped overrides for custom sidebar
-   ============================================================================= */
-
-/* Force light theme design tokens for sidebar (ignores OS dark mode) */
-#custom-sidebar {
-  --color-card: #ffffff;
-  --color-foreground: #111111;
-  --color-border: rgba(0, 0, 0, 0.06);
-  --color-hover: rgba(243, 243, 245, 0.5);
-  --color-active: #f3f3f5;
-  
-  /* Force light background regardless of OS theme */
-  background: #ffffff !important;
-  margin-top: 0;
-  padding-top: 0;
+/* --- Neutralise Streamlit's built-in sidebar header styles to
+    keep the sidebar compact at the top; specific header rules below
+    neutralise any injected React/global rules that target header-like
+    elements so we don't get an unexpected dark band at the top */
+[data-testid="stSidebarHeader"] {
+    display: none;
 }
 
-/* =============================================================================
-   INPUT STYLES
-   ============================================================================= */
-
-/* Number input: Allow dark rendering in OS dark mode for placeholder visibility */
-@media (prefers-color-scheme: dark) {
-  #custom-sidebar input[type="number"] {
-    background: #111111 !important;
-    color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-  }
-
-  #custom-sidebar input[type="number"]::placeholder {
-    color: rgba(255, 255, 255, 0.75) !important;
-  }
-}
-/* Text inputs, textarea, select: Keep light theme styling */
-
-/* --- Hide Streamlit's built-in sidebar nav only when it does NOT
-   contain our custom sidebar. This uses :has() so it's safe and
-   declarative on modern browsers; older browsers ignore it and
-   will still respect the button/input resets above. */
-[data-testid="stSidebarNav"]:not(:has(#custom-sidebar)),
-[data-testid="stSidebarNavItems"]:not(:has(#custom-sidebar)) {
-  display: none !important;
+[data-testid="stSidebarContent"] {
+    padding-top: 0;
+    margin-top: 0;
+    padding: 0 0.6rem 0 0.3rem;
 }
 
-
-[data-testid="stSidebar"] {
-  /* keep the sidebar compact at the top; specific header rules below
-     neutralise any injected React/global rules that target header-like
-     elements so we don't get an unexpected dark band at the top */
-  padding: 0.12rem 0.5rem 0.4rem 0.5rem; /* tightened further per request */
-  background: var(--color-sidebar, var(--color-background, #ffffff));
-  color: var(--color-sidebar-foreground, var(--color-foreground, #000));
+[data-testid="stSidebarUserContent"] {
+    padding: 0;
+    margin: 0 0.2rem;
 }
 
-.profile-card {
-  background: var(--color-card, #fff);
-  color: var(--color-card-foreground, #000);
-  border-radius: calc(var(--radius, 0.625rem) - 4px);
-  padding: 12px 14px;
-  box-shadow: 0 1px 0 rgba(16,24,40,0.04);
-  margin-bottom: 8px;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+.stButton > button[kind="tertiary"] {
+    background-color: #FFFFFF;
 }
 
-/* Defensive resets to prevent injected/global CSS from adding a
-   dark banner or extra top spacing above the sidebar title. These
-   rules are intentionally specific and scoped to our wrapper id so
-   they won't affect other parts of the app. */
-#custom-sidebar {
-  background: transparent;
-  margin-top: 0;
-  padding-top: 0;
+/* Kill global gap */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+  gap: 0;
 }
 
+/* Remove gap between nav buttons only */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"]
+  > [data-testid="stElementContainer"]:has(
+    .stButton > button[kind="secondary"], 
+    .stButton > button[kind="primary"], 
+    .stMarkdown > [data-testid="stMarkdownContainer"] > hr, h2, [data-testid="InputInstructions"]) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Re-create default spacing for most children */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] 
+  > [data-testid="stElementContainer"]:not(:has(.stButton > button[kind="secondary"]), :has(.stButton > button[kind="primary"])) {
+  margin-bottom: 1rem;
+}
+
+/* Align nav buttons to the left */
+.stSidebar .stButton > button[kind="secondary"],
+.stSidebar .stButton > button[kind="primary"] {
+  justify-content: flex-start;
+}
+
+/* Sidebar container */
+.stSidebar {
+  min-width: 180px;
+}
+
+.section-header, .section-small {
+  padding: 18px 0 6px 0;
+}
+
+/* Sidebar title */
 #custom-sidebar h2 {
-  margin: 0 0 0.25rem 0; /* remove default top margin from h2 */
-  padding: 0.08rem 0;   /* very tight spacing */
-  font-size: 1.125rem;
+  padding: 0 !important;
   font-weight: 700;
-  color: var(--color-foreground, #111);
-  background: transparent; /* override any stray header background */
+  background: transparent;
+}
+
+/* Profile card */
+.profile-top {
+  color: #6b6b6b;
+  font-size: 13px;
+  margin-top: 19px;
+}
+
+.profile-name {
+  font-weight: 600;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  color: #111111;
+}
+
+.profile-av {
+  color: #7b7b7b;
+  font-size: 13px;
+  margin-bottom: 8px;
 }
 
 /* Some injected CSS targets the first child of containers; ensure the
@@ -88,9 +90,10 @@
    needed to beat upstream injected rules that are global. */
 [data-testid="stSidebar"] > *:first-child,
 #custom-sidebar > *:first-child {
-  background: transparent !important;
+  /* background: transparent !important; */
   margin-top: 0 !important;
   padding-top: 0 !important;
+  gap: 0 !important;
 }
 
 /* Ensure there is absolutely no unexpected top gap inside the
@@ -104,53 +107,40 @@
 }
 
 /* Reduce spacing produced by Markdown hr lines inside the sidebar */
-#custom-sidebar hr, [data-testid="stSidebar"] hr {
-  margin: 0.3rem 0;
-  border: none;
+hr {
   border-top: 1px solid var(--color-border, rgba(0,0,0,0.06));
+  min-width: 100%;
+  margin-left: -2em !important;
+  margin-right: -2em !important;
 }
 
-#custom-sidebar input:not([type="number"]),
-#custom-sidebar textarea,
-#custom-sidebar select {
-  border: 1px solid var(--color-border) !important;
-  padding: 8px 10px !important;
-  border-radius: 6px !important;
-  outline: none !important;
-  box-shadow: none !important;
+.title-divider {
+  margin-top: 6px !important;
+  margin-bottom: -6px !important;
 }
 
-#custom-sidebar input:focus,
-#custom-sidebar textarea:focus,
-#custom-sidebar select:focus {
-  border-color: rgba(0, 0, 0, 0.12) !important;
+.section-divider {
+  margin-top: 0 !important;
+  margin-bottom: 36px !important;
 }
 
-/* =============================================================================
-   BUTTON STYLES - Proper cascade order to avoid conflicts
-   Order: STEP 1 (layout) → STEP 2 (base) → STEP 4 (primary nav) → 
-          STEP 5 (secondary nav) → STEP 6 (.always-active) → STEP 3 (auth buttons LAST to override)
-   ============================================================================= */
-
-/* STEP 1: Reduce button container gaps */
-[data-testid="stSidebar"] .stButton,
-[data-testid="stSidebar"] #custom-sidebar .stButton {
-  margin: 0 0 4px 0 !important;
-  padding: 0 !important;
+.footer-divider {
+  margin-top: 12px !important;
+  margin-bottom: 22px !important;
 }
 
 /* STEP 2: Base styles for ALL sidebar buttons - ONLY non-color properties */
 [data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button {
+[data-testid="stSidebar"] .stSidebar .stButton > button {
   outline: none !important;
   box-shadow: none !important;
   transition: background 120ms ease, border-color 150ms ease !important;
   padding: 8px 12px !important;
   border-radius: 8px !important;
+  border: transparent !important;
   width: 100% !important;
 }
 
-/* Remove red focus ring on ALL pseudo-states */
 [data-testid="stSidebar"] .stButton > button:focus,
 [data-testid="stSidebar"] .stButton > button:focus-visible,
 [data-testid="stSidebar"] .stButton > button:active {
@@ -158,215 +148,25 @@
   box-shadow: none !important;
 }
 
-/* STEP 4: Navigation buttons with type="primary" - Gray background (selected) */
-[data-testid="stSidebar"] .stButton > button[kind="primary"],
-[data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primary"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="primaryFormSubmit"] {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  background-image: none !important;
-  border: none !important;
-  color: #111111 !important;
-  font-weight: 600 !important;
-  text-align: left !important;
-}
-
 /* STEP 5: Navigation buttons with type="secondary" - Transparent (unselected) */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"],
 [data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"] {
+[data-testid="stSidebar"] .stSidebar .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stSidebar .stButton > button[kind="secondaryFormSubmit"] {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
   border: none !important;
   color: #111111 !important;
   font-weight: 400 !important;
-  text-align: left !important;
 }
 
-/* Secondary hover: Light gray background */
+/* Secondary hover: White background */
 [data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:hover,
+[data-testid="stSidebar"] .stSidebar .stButton > button[kind="secondary"]:hover,
 [data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"]:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"]:hover {
-  background: rgba(243, 243, 245, 0.5) !important;
-  background-color: rgba(243, 243, 245, 0.5) !important;
+[data-testid="stSidebar"] .stSidebar .stButton > button[kind="secondaryFormSubmit"]:hover {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
   color: #111111 !important;
-}
-
-/* Secondary active: Full gray background */
-[data-testid="stSidebar"] .stButton > button[kind="secondary"]:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondary"]:active,
-[data-testid="stSidebar"] .stButton > button[kind="secondaryFormSubmit"]:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button[kind="secondaryFormSubmit"]:active {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  color: #111111 !important;
-}
-
-/* STEP 6: .always-active class for persistent selection (JavaScript-added) */
-[data-testid="stSidebar"] .stButton > button.always-active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  background-image: none !important;
-  border: none !important;
-  color: #111111 !important;
-  font-weight: 600 !important;
-}
-
-/* Always-active maintains appearance on hover */
-[data-testid="stSidebar"] .stButton > button.always-active:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.always-active:hover {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  color: #111111 !important;
-}
-
-/* STEP 3: Login/Logout buttons - Target with .auth-button class (added by JavaScript)
-   PLACED LAST to override STEP 5's transparent background for secondary buttons
-   Light gray background, dark text, subtle border
-   Higher specificity by including button element and [kind] attribute */
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"],
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"],
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"],
-[data-testid="stSidebar"] .stButton > button.auth-button,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button {
-  background: #e8e8ea !important;
-  background-color: #e8e8ea !important;
-  background-image: none !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  color: #111111 !important;
-  font-weight: 600 !important;
-}
-
-/* Login/Logout hover: Slightly lighter background - MUST override STEP 5 hover */
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:hover,
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:hover,
-[data-testid="stSidebar"] .stButton > button.auth-button:hover,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:hover {
-  background: #f3f3f5 !important;
-  background-color: #f3f3f5 !important;
-  border-color: rgba(0, 0, 0, 0.12) !important;
-  color: #111111 !important;
-}
-
-/* Login/Logout focus/active: Keep same as default */
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:focus,
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondary"]:active,
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:focus,
-[data-testid="stSidebar"] .stButton > button.auth-button[kind="secondaryFormSubmit"]:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:focus,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondary"]:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:focus,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button[kind="secondaryFormSubmit"]:active,
-[data-testid="stSidebar"] .stButton > button.auth-button:focus,
-[data-testid="stSidebar"] .stButton > button.auth-button:active,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:focus,
-[data-testid="stSidebar"] #custom-sidebar .stButton > button.auth-button:active {
-  background: #e8e8ea !important;
-  background-color: #e8e8ea !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  color: #111111 !important;
-}
-
-/* =============================================================================
-   LAYOUT STYLES
-   ============================================================================= */
-
-/* Sidebar container */
-[data-testid="stSidebar"] {
-  padding: 0.12rem 0.5rem 0.4rem 0.5rem;
-  background: #ffffff;
-  color: #000000;
-}
-
-/* Hide Streamlit's default navigation */
-[data-testid="stSidebarNav"]:not(:has(#custom-sidebar)),
-[data-testid="stSidebarNavItems"]:not(:has(#custom-sidebar)) {
-  display: none !important;
-}
-
-/* Prevent dark bands at top */
-[data-testid="stSidebar"] > *:first-child,
-#custom-sidebar > *:first-child,
-[data-testid="stSidebar"] > div,
-[data-testid="stSidebar"] > div > div {
-  background: transparent !important;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-/* Sidebar title */
-#custom-sidebar h2 {
-  margin: 0 0 0.25rem 0;
-  padding: 0.08rem 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--color-foreground);
-  background: transparent;
-}
-
-/* Horizontal rules */
-#custom-sidebar hr {
-  margin: 0.3rem 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
-
-/* Profile card */
-.profile-card {
-  background: var(--color-card);
-  color: #000000;
-  border-radius: 6px;
-  padding: 12px 14px;
-  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
-  margin-bottom: 8px;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-}
-
-.profile-top {
-  color: #6b6b6b;
-  font-size: 13px;
-}
-
-.profile-name {
-  font-weight: 600;
-  margin-top: 6px;
-  margin-bottom: 2px;
-  color: #111111;
-}
-
-.profile-av {
-  color: #7b7b7b;
-  font-size: 13px;
-}
-
-/* =============================================================================
-   UTILITY CLASSES
-   ============================================================================= */
-
-/* Prevent dark mode interference on main app */
-.stApp > *:first-child,
-.stApp header,
-.stApp > div[role="banner"],
-.stApp > [data-testid="stToolbar"] {
-  background: transparent !important;
-  box-shadow: none !important;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-/* Number input fallback for OS dark mode */
-.st-emotion-cache-1weic72 {
-  display: inline-block;
-  background: revert;
-  color: revert;
-  -webkit-appearance: auto;
-  appearance: auto;
 }
