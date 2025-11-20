@@ -311,7 +311,7 @@ def _list_member_drafts(member_id: int) -> List[Dict[str, Any]]:
         SELECT s.id AS session_id,
                DATE_FORMAT(s.shoot_date, :fmt) AS shoot_date,
                r.round_name,
-               COALESCE(c.name, 'Practice (No Competition)') AS competition_name,
+               c.name AS competition_name,
                d.bow_type_code AS division_code,
                (SELECT COUNT(*) FROM `end` e WHERE e.session_id = s.id) AS ends_done,
                (
@@ -455,7 +455,7 @@ def show_score_entry():
         st.markdown(f"### {_status_badge(session['status'])}")
     with info_col3:
         st.markdown("**Competition**")
-        st.markdown(f"### {session['competition_name'] or 'Practice'}")
+        st.markdown(f"### {session['competition_name'] or 'Unassigned'}")
 
     card1, card2, card3 = st.columns(3)
     with card1:
@@ -495,7 +495,13 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
             f"{row['round_name']} ({row['total_ends']} ends)": row["id"] for row in rounds
         }
         competitions = _list_active_competitions()
-        comp_labels = {"Practice (No Competition)": None}
+        
+        # Check if competitions are available
+        if not competitions:
+            st.warning("No active competitions found. Contact a recorder to create one.")
+            return
+
+        comp_labels: Dict[str, int] = {}
         for comp in competitions:
             label = f"{comp['name']} (ends {datetime.datetime.strptime(comp['end_fmt'], DATE_FORMAT_DB).strftime(DATE_FORMAT_UI)})"
             comp_labels[label] = comp["id"]
@@ -512,7 +518,7 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
         with st.form("start_session_form"):
             shoot_date = st.date_input("Shoot date", value=datetime.date.today())
             round_choice = st.selectbox("Round", list(round_labels.keys()))
-            comp_choice = st.selectbox("Competition (optional)", list(comp_labels.keys()))
+            comp_choice = st.selectbox("Competition", list(comp_labels.keys()))
             equipment_choice = st.selectbox(
                 "Equipment for this session",
                 list(division_labels.keys()),
@@ -529,8 +535,7 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
                 shoot_date,
             )
             comp_id = comp_labels[comp_choice]
-            if comp_id:
-                _link_session_to_competition(new_session_id, comp_id)
+            _link_session_to_competition(new_session_id, comp_id)
             st.session_state.score_entry_session_id = new_session_id
             st.session_state.score_entry_resume_notice = "New session created. Happy shooting!"
             st.rerun()
@@ -544,6 +549,7 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
         df = pd.DataFrame(drafts)
         if not df.empty and "division_code" in df:
             df["Division"] = df["division_code"].apply(_division_label)
+        # First rename columns
         df = df.rename(
             columns={
                 "session_id": "Session ID",
@@ -554,6 +560,9 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
                 "total_ends": "Total Ends",
             }
         )
+        # Then handle legacy data with null competition names
+        if not df.empty and "Competition" in df:
+            df["Competition"] = df["Competition"].fillna("Unassigned")
         if "division_code" in df:
             df = df.drop(columns=["division_code"])
         desired_cols = [
@@ -609,15 +618,19 @@ def _render_session_launcher(member_id: int, member_ctx: Optional[Dict[str, Any]
 def _render_competition_linker(session: Dict[str, Any]) -> None:
     with st.expander("Competition link", expanded=False):
         competitions = _list_active_competitions()
-        options = ["Practice (No Competition)"]
-        label_to_id: Dict[str, Optional[int]] = {"Practice (No Competition)": None}
+        if not competitions:
+            st.warning("No active competitions available. Contact a recorder.")
+            return
+            
+        options: List[str] = []
+        label_to_id: Dict[str, int] = {}
         index = 0
-        for comp in competitions:
+        for idx, comp in enumerate(competitions):
             label = f"{comp['name']} (ends {datetime.datetime.strptime(comp['end_fmt'], DATE_FORMAT_DB).strftime(DATE_FORMAT_UI)})"
             options.append(label)
             label_to_id[label] = comp["id"]
             if comp["id"] == session.get("competition_id"):
-                index = len(options) - 1
+                index = idx
 
         selection = st.selectbox("Linked competition", options=options, index=index)
         chosen_id = label_to_id.get(selection)
@@ -920,5 +933,7 @@ def _render_summary_table(session_id: int) -> None:
         return
     df = pd.DataFrame(rows)
     df["distance"] = df["distance_m"].astype(int).astype(str) + " m"
+    # Ensure end_total is properly converted to integer
+    df["end_total"] = pd.to_numeric(df["end_total"], errors="coerce").fillna(0).astype(int)
     df = df.rename(columns={"face_size": "Face", "end_no": "End", "end_total": "Score"})
     st.dataframe(df[["distance", "Face", "End", "Score"]], width="stretch", hide_index=True)

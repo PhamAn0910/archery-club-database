@@ -93,7 +93,7 @@ def _fetch_sessions(member_id: int) -> List[Dict[str, Any]]:
             r.round_name,
             s.status,
             d.bow_type_code AS division_code,
-            COALESCE(comp.name, 'Practice (No Competition)') AS competition_name,
+            comp.name AS competition_name,
             COALESCE(SUM({_score_sum_case()}), 0) AS total_score
         FROM session s
         JOIN round r ON r.id = s.round_id
@@ -251,7 +251,11 @@ def show_score_history():
     df = pd.DataFrame(sessions)
     df["shoot_date"] = pd.to_datetime(df["shoot_date"]).dt.date
     df["shoot_date_fmt"] = df["shoot_date"].apply(lambda d: d.strftime(DATE_FORMAT_UI))
+    # Handle legacy data with null competition names
+    df["competition_name"] = df["competition_name"].fillna("Unassigned")
     df["division_label"] = df["division_code"].apply(_division_label)
+    # Ensure total_score is properly converted to integer
+    df["total_score"] = pd.to_numeric(df["total_score"], errors="coerce").fillna(0).astype(int)
     df["status_label"] = df["status"].map(
         {
             "Preliminary": "🟡 Preliminary",
@@ -275,16 +279,7 @@ def show_score_history():
             default=status_options,
         )
 
-        competition_options = [
-            "Practice (No Competition)",
-            *sorted(
-                {
-                    name
-                    for name in df["competition_name"].dropna()
-                    if name != "Practice (No Competition)"
-                }
-            ),
-        ]
+        competition_options = sorted(df["competition_name"].dropna().unique().tolist())
         selected_competitions = col_comp.multiselect(
             "Competition",
             options=competition_options,
