@@ -43,13 +43,13 @@ def _load_sidebar_css() -> str:
 PUBLIC_PAGES = [
     (":material/leaderboard: Competition Results", "competition_results"),
     (":material/social_leaderboard: Club Championship", "championship_ladder"),
-    (":material/rewarded_ads: Round Bests", "club_pbs"),
+    (":material/rewarded_ads: Round Bests", "club_records"),
 ]
 
 ARCHER_PAGES = [
     (":material/target: Score Entry", "score_entry"),
     (":material/bar_chart_4_bars: My Scores", "score_history"),
-    (":material/workspace_premium: Personal Bests", "pbs_records"),
+    (":material/workspace_premium: Personal Bests", "my_pbs"),
 ]
 
 RECORDER_PAGES = [
