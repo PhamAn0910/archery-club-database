@@ -10,6 +10,8 @@ from db_core import fetch_all, exec_sql, fetch_one
 from sqlalchemy.exc import ProgrammingError
 from guards import require_archer
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from viz_utils import apply_chart_theme
 
 # =====================================================
@@ -517,6 +519,19 @@ def show_score_history():
                     if selected_session:
                         st.markdown("---")
                         _render_score_editor(selected_session, comp_end, key_suffix=f"_c{comp_key}")
+                        
+                        # =================================================
+                        # END-BY-END CONSISTENCY CHART
+                        # =================================================
+                        st.markdown("---")
+                        st.subheader("📊 End-by-End Consistency")
+                        
+                        consistency_data = _get_session_consistency_data(selected_session['session_id'])
+                        
+                        if not consistency_data:
+                            st.info("No end data available for consistency analysis.")
+                        else:
+                            _render_consistency_chart(consistency_data, selected_session)
             else:
                 st.info("AgGrid not available. Please install streamlit-aggrid.")
 
@@ -707,3 +722,165 @@ def _get_distance_performance_data(member_id: int, start_date: datetime.date, en
     query += " GROUP BY rr.distance_m ORDER BY rr.distance_m DESC"
     
     return [dict(row) for row in fetch_all(query, params)]
+
+
+# ==========================================================
+# END-BY-END CONSISTENCY FUNCTION
+# ==========================================================
+@st.cache_data(ttl=300)
+def _get_session_consistency_data(session_id: int):
+    """Fetch end-by-end scores and details for consistency analysis."""
+    return fetch_all(
+        """
+        SELECT 
+            e.id as end_id,
+            e.end_no,
+            rr.distance_m,
+            rr.face_size,
+            rr.ends_per_range,
+            SUM(CASE 
+                WHEN UPPER(TRIM(a.arrow_value)) = 'X' THEN 10
+                WHEN UPPER(TRIM(a.arrow_value)) = 'M' THEN 0
+                ELSE CAST(a.arrow_value AS UNSIGNED)
+            END) AS end_score,
+            COUNT(a.id) AS arrows_count,
+            GROUP_CONCAT(a.arrow_value ORDER BY a.arrow_no SEPARATOR ', ') AS arrows_detail
+        FROM `end` e
+        JOIN round_range rr ON rr.id = e.round_range_id
+        LEFT JOIN arrow a ON a.end_id = e.id
+        WHERE e.session_id = :session_id
+        GROUP BY e.id, e.end_no, rr.distance_m, rr.face_size, rr.ends_per_range
+        ORDER BY rr.distance_m DESC, e.end_no
+        """,
+        {"session_id": session_id}
+    )
+
+
+def _render_consistency_chart(consistency_data: List[Dict], session: Dict):
+    """Render the end-by-end consistency analysis."""
+    
+    # Convert to DataFrame
+    df = pd.DataFrame([dict(row) for row in consistency_data])
+    
+    if df.empty:
+        st.info("No data available for consistency analysis.")
+        return
+    
+    # Convert numeric columns to float to avoid Decimal/float mixing issues
+    numeric_columns = ['end_score', 'distance_m', 'face_size', 'ends_per_range', 'arrows_count']
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Group by distance/face for analysis
+    ranges = df.groupby(['distance_m', 'face_size']).first().reset_index()
+    
+    # Statistical analysis
+    st.markdown("#### 📈 Session Overview")
+    
+    # Overall session statistics
+    total_ends = len(df)
+    session_avg = df['end_score'].mean()
+    session_total = df['end_score'].sum()
+    session_std = df['end_score'].std()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Ends", total_ends)
+    with col2:
+        st.metric("Session Average", f"{session_avg:.1f}")
+    with col3:
+        st.metric("Total Score", int(session_total))
+    with col4:
+        st.metric("Overall Consistency", f"{session_std:.1f}")
+    
+    # Range-by-range breakdown
+    st.markdown("#### 🎯 Range Breakdown")
+    
+    range_stats = []
+    for _, range_info in ranges.iterrows():
+        distance = range_info['distance_m']
+        face_size = range_info['face_size']
+        range_data = df[(df['distance_m'] == distance) & (df['face_size'] == face_size)]
+        
+        range_stats.append({
+            'Distance': f"{int(distance)}m",
+            'Face Size': f"{int(face_size)}cm",
+            'Ends': len(range_data),
+            'Average': round(range_data['end_score'].mean(), 1),
+            'Best': int(range_data['end_score'].max()),
+            'Worst': int(range_data['end_score'].min()),
+            'Std Dev': round(range_data['end_score'].std(), 1) if len(range_data) > 1 else 0
+        })
+    
+    range_df = pd.DataFrame(range_stats)
+    st.dataframe(range_df, use_container_width=True)
+    
+    # Running Average Charts
+    st.markdown("#### 📈 End-by-End Trends")
+    
+    for _, range_info in ranges.iterrows():
+        distance = range_info['distance_m']
+        face_size = range_info['face_size']
+        range_data = df[(df['distance_m'] == distance) & (df['face_size'] == face_size)].copy()
+        
+        if range_data.empty:
+            continue
+        
+        # Sort by end_no to ensure proper order
+        range_data = range_data.sort_values('end_no')
+        running_avg = range_data['end_score'].expanding().mean()
+        
+        # Create running average line chart
+        fig_avg = px.line(
+            x=range_data['end_no'],
+            y=running_avg,
+            title=f"Running Average - {int(distance)}m ({int(face_size)}cm)",
+            labels={'x': 'End Number', 'y': 'Running Avg Score'},
+            markers=True
+        )
+        
+        # Add horizontal line at session average for this range
+        range_avg = range_data['end_score'].mean()
+        fig_avg.add_hline(
+            y=range_avg,
+            line_dash="dash",
+            line_color="orange",
+            annotation_text=f"Range Avg: {range_avg:.1f}",
+            annotation_position="top right"
+        )
+        
+        fig_avg.update_layout(height=250)
+        fig_avg = apply_chart_theme(fig_avg)
+        st.plotly_chart(fig_avg, use_container_width=True)
+    
+    # Consistency insights
+    st.markdown("#### 💡 Consistency Insights")
+    
+    # Find most/least consistent ranges
+    if len(range_stats) > 1:
+        most_consistent = min(range_stats, key=lambda x: x['Std Dev'])
+        least_consistent = max(range_stats, key=lambda x: x['Std Dev'])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.success(f"**Most Consistent**: {most_consistent['Distance']} (σ = {most_consistent['Std Dev']})")
+        with col2:
+            st.warning(f"**Needs Work**: {least_consistent['Distance']} (σ = {least_consistent['Std Dev']})")
+    
+    # Performance trends
+    if total_ends >= 5:
+        # Split into first half vs second half
+        mid_point = len(df) // 2
+        first_half_avg = df.iloc[:mid_point]['end_score'].mean()
+        second_half_avg = df.iloc[mid_point:]['end_score'].mean()
+        improvement = second_half_avg - first_half_avg
+        
+        if improvement > 1:
+            st.info(f"📈 **Improving**: +{improvement:.1f} points from first half to second half")
+        elif improvement < -1:
+            st.warning(f"📉 **Declining**: {improvement:.1f} points from first half to second half")
+        else:
+            st.success(f"🎯 **Steady**: Consistent performance throughout ({improvement:+.1f})")
+    
+    st.caption("Lower σ (standard deviation) = more consistent. Target: σ < 5 for competitive shooting.")
