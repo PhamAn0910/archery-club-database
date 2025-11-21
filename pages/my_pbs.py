@@ -2,9 +2,11 @@ from __future__ import annotations
 from datetime import date as dt_date
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 from db_core import fetch_all
 from guards import require_archer
+from viz_utils import apply_chart_theme
 
 
 def _score_sum_case() -> str:
@@ -19,6 +21,35 @@ def _score_sum_case() -> str:
 def _chunked(iterable, n: int):
     for i in range(0, len(iterable), n):
         yield iterable[i : i + n]
+
+# ==========================================================
+# DISTANCE PERFORMANCE FUNCTION
+# ==========================================================
+@st.cache_data(ttl=300)
+def _get_distance_performance_data(member_id: int):
+    """Fetch average scores by distance for the member, combining all face sizes."""
+    return fetch_all(
+        """
+        SELECT 
+            rr.distance_m,
+            AVG(CASE 
+                WHEN UPPER(TRIM(a.arrow_value)) = 'X' THEN 10
+                WHEN UPPER(TRIM(a.arrow_value)) = 'M' THEN 0
+                ELSE CAST(a.arrow_value AS UNSIGNED)
+            END) AS avg_score_per_arrow,
+            COUNT(DISTINCT e.id) AS ends_count,
+            GROUP_CONCAT(DISTINCT rr.face_size ORDER BY rr.face_size SEPARATOR ', ') AS face_sizes
+        FROM session s
+        JOIN `end` e ON e.session_id = s.id
+        JOIN round_range rr ON rr.id = e.round_range_id
+        JOIN arrow a ON a.end_id = e.id
+        WHERE s.member_id = :mid
+          AND s.status = 'Confirmed'
+        GROUP BY rr.distance_m
+        ORDER BY rr.distance_m DESC
+        """,
+        {"mid": member_id}
+    )
 
 
 @require_archer
@@ -76,6 +107,107 @@ def show_my_personal_bests():
     if not personal_bests:
         st.info("No confirmed sessions found yet. Record a score to unlock your PB board!")
         return
+
+    # =================================================
+    # DISTANCE PERFORMANCE CHART
+    # =================================================
+    st.markdown("### 🎯 Performance by Distance")
+    
+    # Fetch distance performance data
+    distance_data = _get_distance_performance_data(member_id)
+    
+    if not distance_data:
+        st.info("No distance data available yet. Complete more rounds to see this chart.")
+    else:
+        # Create toggle for view mode
+        view_mode = st.radio(
+            "View by:",
+            ["Average per Arrow", "Total Ends Shot"],
+            horizontal=True,
+            key="distance_view_mode"
+        )
+        
+        # Convert to DataFrame for easier plotting
+        df_dist = pd.DataFrame([dict(row) for row in distance_data])
+        
+        # Prepare data based on view mode
+        if view_mode == "Average per Arrow":
+            y_column = 'avg_score_per_arrow'
+            y_label = 'Average Score per Arrow'
+            y_range = [0, 10]
+            format_y = '.2f'
+        else:
+            y_column = 'ends_count'
+            y_label = 'Total Ends Shot'
+            y_range = None
+            format_y = 'd'
+        
+        # Create distance labels and face size labels
+        df_dist['distance_label'] = df_dist['distance_m'].astype(str) + 'm'
+        
+        # Create the bar chart
+        fig = px.bar(
+            df_dist,
+            x='distance_label',
+            y=y_column,
+            title=f"Performance by Distance ({view_mode})",
+            labels={
+                'distance_label': 'Distance',
+                y_column: y_label
+            },
+            hover_data={
+                'distance_m': True,
+                'face_sizes': True,
+                'avg_score_per_arrow': ':.2f',
+                'ends_count': True
+            }
+        )
+        
+        # Update hover template
+        if view_mode == "Average per Arrow":
+            hover_template = (
+                "Distance: %{customdata[0]}m<br>"
+                "Face sizes: %{customdata[1]}<br>"
+                "Avg: %{y:.2f}/10<br>"
+                "Ends: %{customdata[2]}"
+                "<extra></extra>"
+            )
+        else:
+            hover_template = (
+                "Distance: %{customdata[0]}m<br>"
+                "Face sizes: %{customdata[1]}<br>"
+                "Avg: %{customdata[2]:.2f}/10<br>"
+                "Ends: %{y}"
+                "<extra></extra>"
+            )
+        
+        fig.update_traces(hovertemplate=hover_template)
+        
+        # Set y-axis range and add reference line for average per arrow view
+        if view_mode == "Average per Arrow":
+            fig.update_yaxes(range=y_range)
+            # Add horizontal line at y=8 (good performance threshold)
+            fig.add_hline(
+                y=8, 
+                line_dash="dash", 
+                line_color="green", 
+                annotation_text="Good Performance (8/10)",
+                annotation_position="top right"
+            )
+        
+        # Apply theme
+        fig = apply_chart_theme(fig)
+        
+        # Display chart
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Add explanatory caption
+        if view_mode == "Average per Arrow":
+            st.caption("Higher is better. Target: 8+ per arrow for competitive scores.")
+        else:
+            st.caption("Shows training volume by distance. More ends indicate more practice at that distance.")
+
+    st.markdown("---")
 
     unique_rounds = sorted({row["round_name"] for row in personal_bests})
     round_filter = st.selectbox(
