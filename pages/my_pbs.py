@@ -108,6 +108,70 @@ def show_my_personal_bests():
         st.info("No confirmed sessions found yet. Record a score to unlock your PB board!")
         return
 
+    unique_rounds = sorted({row["round_name"] for row in personal_bests})
+    round_filter = st.selectbox(
+        "Filter by round",
+        ["All rounds"] + unique_rounds,
+        index=0,
+    )
+
+    filtered = (
+        personal_bests
+        if round_filter == "All rounds"
+        else [row for row in personal_bests if row["round_name"] == round_filter]
+    )
+
+    top_score_row = max(filtered, key=lambda r: r["total_score"] or 0)
+    latest_row = max(filtered, key=lambda r: r["shoot_date"] or dt_date.min)
+
+    st.markdown("### Highlights")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("Rounds with PB", len(filtered))
+    with col_b:
+        st.metric("Highest Score", int(top_score_row["total_score"]))
+    with col_c:
+        latest_date = latest_row["shoot_date"]
+        date_label = latest_date.strftime("%Y-%m-%d") if latest_date else "N/A"
+        st.metric("Most Recent PB", date_label)
+
+    st.markdown("### Personal Best Cards")
+    cols_per_row = 2
+    for row in _chunked(filtered, cols_per_row):
+        col_set = st.columns(cols_per_row)
+        for col, record in zip(col_set, row):
+            with col:
+                score = int(record["total_score"]) if record["total_score"] is not None else 0
+                shoot_date = record["shoot_date"]
+                date_str = shoot_date.strftime("%Y-%m-%d") if shoot_date else "Unknown"
+                st.markdown(
+                    f"""
+                    <div style='border:1px solid #e0e0e0;border-radius:12px;padding:16px;background:#ffffff;'>
+                        <div style='font-size:0.9rem;color:#666;'>Round</div>
+                        <div style='font-size:1.2rem;font-weight:600;margin-bottom:8px;'>{record['round_name']}</div>
+                        <div style='font-size:2rem;font-weight:700;color:#099268;'>{score}</div>
+                        <div style='font-size:0.95rem;margin-top:4px;'>Set by <strong>{member_name}</strong></div>
+                        <div style='font-size:0.85rem;color:#666;'>on {date_str}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    st.markdown("### Full Table")
+    df = pd.DataFrame(filtered)
+    df["shoot_date"] = pd.to_datetime(df["shoot_date"]).dt.date
+    df = df.rename(
+        columns={
+            "round_name": "Round",
+            "total_score": "Score",
+            "shoot_date": "Date",
+        }
+    )
+    st.dataframe(
+        df.sort_values("Round"),
+        use_container_width=True,
+    )
+
     # =================================================
     # DISTANCE PERFORMANCE CHART
     # =================================================
@@ -206,69 +270,3 @@ def show_my_personal_bests():
             st.caption("Higher is better. Target: 8+ per arrow for competitive scores.")
         else:
             st.caption("Shows training volume by distance. More ends indicate more practice at that distance.")
-
-    st.markdown("---")
-
-    unique_rounds = sorted({row["round_name"] for row in personal_bests})
-    round_filter = st.selectbox(
-        "Filter by round",
-        ["All rounds"] + unique_rounds,
-        index=0,
-    )
-
-    filtered = (
-        personal_bests
-        if round_filter == "All rounds"
-        else [row for row in personal_bests if row["round_name"] == round_filter]
-    )
-
-    top_score_row = max(filtered, key=lambda r: r["total_score"] or 0)
-    latest_row = max(filtered, key=lambda r: r["shoot_date"] or dt_date.min)
-
-    st.markdown("### Highlights")
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("Rounds with PB", len(filtered))
-    with col_b:
-        st.metric("Highest Score", int(top_score_row["total_score"]))
-    with col_c:
-        latest_date = latest_row["shoot_date"]
-        date_label = latest_date.strftime("%Y-%m-%d") if latest_date else "N/A"
-        st.metric("Most Recent PB", date_label)
-
-    st.markdown("### Personal Best Cards")
-    cols_per_row = 2
-    for row in _chunked(filtered, cols_per_row):
-        col_set = st.columns(cols_per_row)
-        for col, record in zip(col_set, row):
-            with col:
-                score = int(record["total_score"]) if record["total_score"] is not None else 0
-                shoot_date = record["shoot_date"]
-                date_str = shoot_date.strftime("%Y-%m-%d") if shoot_date else "Unknown"
-                st.markdown(
-                    f"""
-                    <div style='border:1px solid #e0e0e0;border-radius:12px;padding:16px;background:#ffffff;'>
-                        <div style='font-size:0.9rem;color:#666;'>Round</div>
-                        <div style='font-size:1.2rem;font-weight:600;margin-bottom:8px;'>{record['round_name']}</div>
-                        <div style='font-size:2rem;font-weight:700;color:#099268;'>{score}</div>
-                        <div style='font-size:0.95rem;margin-top:4px;'>Set by <strong>{member_name}</strong></div>
-                        <div style='font-size:0.85rem;color:#666;'>on {date_str}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-    st.markdown("### Full Table")
-    df = pd.DataFrame(filtered)
-    df["shoot_date"] = pd.to_datetime(df["shoot_date"]).dt.date
-    df = df.rename(
-        columns={
-            "round_name": "Round",
-            "total_score": "Score",
-            "shoot_date": "Date",
-        }
-    )
-    st.dataframe(
-        df.sort_values("Round"),
-        use_container_width=True,
-    )
