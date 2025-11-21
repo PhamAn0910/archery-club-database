@@ -291,17 +291,17 @@ INSERT INTO competition (name, start_date, end_date, rules_note) VALUES
     
     -- Warning test: Ends tomorrow (November 20, 2025) - 1 day warning
     ('November Sprint',
-     '2025-11-15', '2025-11-20',
+     '2025-11-15', '2025-11-23',
      'Short competition ending soon - tests 1 day warning.'),
     
     -- Warning test: Ends in 2 days (November 21, 2025) - 2 day warning
     ('Late November Challenge',
-     '2025-11-10', '2025-11-21',
+     '2025-11-10', '2025-11-22',
      'Competition ending in 2 days - tests 2 day warning boundary.'),
     
     -- Warning test: Ends today (November 19, 2025) - no warning (already here)
     ('Mid-November Shootout',
-     '2025-11-18', '2025-11-19',
+     '2025-11-18', '2025-11-21',
      'Competition ending today - should not show warning.'),
     
     -- Future competition: Starts next week
