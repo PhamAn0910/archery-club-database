@@ -9,6 +9,8 @@ import pandas as pd
 from db_core import fetch_all, exec_sql, fetch_one
 from sqlalchemy.exc import ProgrammingError
 from guards import require_archer
+import plotly.express as px
+from viz_utils import apply_chart_theme
 
 # =====================================================
 # AGGRID INTEGRATION (OPTIONAL)
@@ -268,6 +270,49 @@ def _render_score_editor(session: Dict, comp_end: datetime.date, key_suffix: str
 
 
 # ==========================================================
+# SCORE PROGRESSION FUNCTION
+# ==========================================================
+@st.cache_data(ttl=300)
+def _get_score_progression_data(member_id: int, start_date: datetime.date, end_date: datetime.date, statuses: List[str], rounds: List[str]) -> List[Dict]:
+    """Fetch score progression data with filters applied."""
+    params: Dict[str, Any] = {
+        'mid': member_id,
+        'start_date': start_date,
+        'end_date': end_date
+    }
+    
+    query = """
+        SELECT 
+            s.id AS session_id,
+            s.shoot_date,
+            r.round_name,
+            COALESCE(SUM(CASE 
+                WHEN UPPER(TRIM(a.arrow_value)) = 'X' THEN 10
+                WHEN UPPER(TRIM(a.arrow_value)) = 'M' THEN 0
+                ELSE CAST(a.arrow_value AS UNSIGNED)
+            END), 0) AS total_score
+        FROM session s
+        JOIN round r ON r.id = s.round_id
+        LEFT JOIN `end` e ON e.session_id = s.id
+        LEFT JOIN arrow a ON a.end_id = e.id
+        WHERE s.member_id = :mid
+          AND s.shoot_date BETWEEN :start_date AND :end_date
+    """
+    
+    if statuses:
+        query += " AND s.status IN :statuses"
+        params['statuses'] = tuple(statuses)
+        
+    if rounds:
+        query += " AND r.round_name IN :rounds"
+        params['rounds'] = tuple(rounds)
+        
+    query += " GROUP BY s.id, s.shoot_date, r.round_name ORDER BY s.shoot_date"
+    
+    return [dict(row) for row in fetch_all(query, params)]
+
+
+# ==========================================================
 # MAIN PAGE FUNCTION
 # ==========================================================
 @require_archer
@@ -474,3 +519,47 @@ def show_score_history():
                         _render_score_editor(selected_session, comp_end, key_suffix=f"_c{comp_key}")
             else:
                 st.info("AgGrid not available. Please install streamlit-aggrid.")
+
+    # =================================================
+    # SCORE PROGRESSION CHART
+    # =================================================
+    st.markdown("---")
+    st.subheader("📈 Score Progression")
+
+    with st.spinner("Loading chart..."):
+        prog_data = _get_score_progression_data(member_id, start_date, end_date, selected_statuses, selected_rounds)
+
+    if len(prog_data) < 2:
+        st.info("Not enough data to show progression chart (need 2+ sessions).")
+    else:
+        # Convert to DataFrame for easier plotting
+        df_prog = pd.DataFrame(prog_data)
+        
+        # Ensure shoot_date is datetime for Plotly
+        df_prog['shoot_date'] = pd.to_datetime(df_prog['shoot_date'])
+        
+        # Create Plotly figure
+        fig = px.line(
+            df_prog, 
+            x='shoot_date', 
+            y='total_score', 
+            color='round_name',
+            markers=True,
+            labels={
+                'shoot_date': 'Date',
+                'total_score': 'Total Score',
+                'round_name': 'Round'
+            },
+            hover_data={
+                'shoot_date': '|%d-%m-%Y',  # Format for hover
+                'total_score': True,
+                'round_name': True
+            }
+        )
+        
+        fig.update_layout(title="Score Progression Over Time")
+        
+        # Apply theme
+        fig = apply_chart_theme(fig)
+        
+        st.plotly_chart(fig, use_container_width=True)
