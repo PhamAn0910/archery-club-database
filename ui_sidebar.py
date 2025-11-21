@@ -50,6 +50,7 @@ ARCHER_PAGES = [
     (":material/target: Score Entry", "score_entry"),
     (":material/bar_chart_4_bars: My Scores", "score_history"),
     (":material/workspace_premium: Personal Bests", "my_pbs"),
+    ("🤖 Ask AI", "ask_ai"),
 ]
 
 RECORDER_PAGES = [

@@ -13,6 +13,7 @@ from pages.score_entry import show_score_entry
 from pages.score_history import show_score_history
 from pages.club_records import show_club_records
 from pages.my_pbs import show_my_personal_bests
+from pages.ask_ai import show_ask_ai
 from pages.competition_results import show_competition_results
 from pages.championship_ladder import show_championship_ladder
 from pages.recorder_approval import show_recorder_approval
@@ -57,6 +58,7 @@ page_renderers = {
     "my_pbs": show_my_personal_bests,
     "competition_results": show_competition_results,
     "championship_ladder": show_championship_ladder,
+    "ask_ai": show_ask_ai,
     "recorder_approval": show_recorder_approval,
     "recorder_management": show_recorder_management,
 }
