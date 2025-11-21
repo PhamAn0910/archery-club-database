@@ -2,7 +2,7 @@
 # IMPORTS
 # =====================================================
 import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any  # Added 'Any' to fix type errors
 
 import streamlit as st
 import pandas as pd
@@ -50,7 +50,9 @@ def _parse_date(s: str) -> datetime.date:
         return _today_date()
 
 
-def _format_date_for_ui(date: datetime.date) -> str:
+def _format_date_for_ui(date: datetime.date | str) -> str:
+    if isinstance(date, str):
+         return date # Already formatted or string
     return date.strftime(DATE_FORMAT_UI)
 
 def _format_date_for_db(date: datetime.date) -> str:
@@ -93,8 +95,12 @@ def _compute_session_total(session_id: int) -> int:
 # ARROW EDITOR
 # =====================================================
 
-def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: bool, comp_end: datetime.date):
-    """Render the 6-arrow editor for a single end."""
+def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: bool, comp_end: datetime.date, key_suffix: str = ""):
+    """Render the 6-arrow editor for a single end.
+    
+    Args:
+        key_suffix: A unique string (e.g., competition ID) to append to widget keys to prevent duplicates.
+    """
     arrows = fetch_all(
         "SELECT arrow_no, arrow_value FROM arrow WHERE end_id = :end_id ORDER BY arrow_no",
         params={'end_id': end_id}
@@ -118,7 +124,7 @@ def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: b
                 f"Arrow {i+1}",
                 options=choices,
                 index=idx,
-                key=f"arrow_{session_id}_{end_id}_{i}_{comp_end.strftime(DATE_FORMAT_DB)}",
+                key=f"arrow_{session_id}_{end_id}_{i}_{comp_end.strftime(DATE_FORMAT_DB)}{key_suffix}",
                 disabled=protected
             )
             new_vals.append(new)
@@ -144,9 +150,12 @@ def _render_arrow_editor(session_id: int, end_id: int, end_no: int, protected: b
 # SCORE EDITOR
 # =====================================================
 
-def _render_score_editor(session: Dict, comp_end: datetime.date):
+def _render_score_editor(session: Dict, comp_end: datetime.date, key_suffix: str = ""):
     """
     Render the score editor panel (Ranges -> Ends -> Arrows).
+    
+    Args:
+        key_suffix: A unique string (e.g., competition ID) to append to widget keys to prevent duplicates.
     """
     session_id = session['session_id']
     status = session['status']
@@ -160,7 +169,13 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     protected = (today > comp_end) or (status in ['Final', 'Confirmed'])
     
     view_mode = " (View Only)" if protected else ""
-    st.markdown(f"### Score Detail{view_mode}: {session.get('av_number', 'N/A')} — {session['round_name']} ({_format_date_for_ui(_parse_date(session['shoot_date']))})")
+    
+    # Ensure shoot_date is a date object before formatting
+    s_date = session['shoot_date']
+    if isinstance(s_date, str):
+        s_date = _parse_date(s_date)
+        
+    st.markdown(f"### Score Detail{view_mode}: {session.get('av_number', 'N/A')} — {session['round_name']} ({_format_date_for_ui(s_date)})")
     
     if today > comp_end:
         st.info("This score is locked because the Competition has ended.", icon=":material/lock:")
@@ -180,7 +195,8 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     
     # Range selector
     range_options = [f"{r['distance_m']}m (face {r['face_size']}) — {r['ends_per_range']} ends" for r in ranges]
-    range_key = f"range_selector_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}"
+    
+    range_key = f"range_selector_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}{key_suffix}"
     
     if range_key not in st.session_state:
         st.session_state[range_key] = 0
@@ -190,7 +206,7 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
         options=list(range(len(range_options))),
         format_func=lambda i: range_options[i],
         index=st.session_state[range_key],
-        key=f"range_select_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}"
+        key=f"range_select_{session_id}_{comp_end.strftime(DATE_FORMAT_DB)}{key_suffix}"
     )
     st.session_state[range_key] = selected_range_idx
     
@@ -208,7 +224,7 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
         return
     
     # End navigator
-    end_key = f"end_idx_{session_id}_{range_id}_{comp_end.strftime(DATE_FORMAT_DB)}"
+    end_key = f"end_idx_{session_id}_{range_id}_{comp_end.strftime(DATE_FORMAT_DB)}{key_suffix}"
     if end_key not in st.session_state:
         st.session_state[end_key] = 0
     
@@ -220,7 +236,7 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     
     # Render arrow editor for current end
     current_end = ends[current_end_idx]
-    arrow_vals = _render_arrow_editor(session_id, current_end['id'], current_end['end_no'], protected, comp_end)
+    arrow_vals = _render_arrow_editor(session_id, current_end['id'], current_end['end_no'], protected, comp_end, key_suffix)
     
     # Calculate totals
     end_score = sum(_score_from_arrow(a) for a in arrow_vals)
@@ -237,14 +253,14 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
     st.markdown("")
     col_prev, col_next = st.columns(2)
     with col_prev:
-        if st.button("◀ Previous End", key=f"prev_end_{session_id}_{range_id}", 
+        if st.button("◀ Previous End", key=f"prev_end_{session_id}_{range_id}{key_suffix}", 
                      disabled=current_end_idx == 0,
                      use_container_width=True):
             st.session_state[end_key] = max(0, current_end_idx - 1)
             st.rerun()
     
     with col_next:
-        if st.button("Next End ▶", key=f"next_end_{session_id}_{range_id}", 
+        if st.button("Next End ▶", key=f"next_end_{session_id}_{range_id}{key_suffix}", 
                      disabled=current_end_idx >= total_ends - 1,
                      use_container_width=True):
             st.session_state[end_key] = min(total_ends - 1, current_end_idx + 1)
@@ -257,154 +273,150 @@ def _render_score_editor(session: Dict, comp_end: datetime.date):
 @require_archer
 def show_score_history():
     st.title("My Scores")
-    st.caption("Select a session below to view or edit details.")
+    st.caption("View your score history and edit preliminary scores.")
     
-    # Fetch ALL competitions
-    competitions = fetch_all("""
-        SELECT id, name, DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
-               DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
-        FROM competition
-        ORDER BY start_date DESC, name
-    """)
-    
-    if not competitions:
-        st.info("No competitions found.")
+    # 1. Get current member ID
+    member_id = _get_member_id()
+    if not member_id:
+        st.error("Could not identify current user.")
         return
     
     today = _today_date()
     
-    # Competition filters
-    st.markdown("#### Filter Competitions")
-    col_filter1, col_filter2, col_filter3 = st.columns(3)
-
-    with col_filter1:
-        # Status filter (all/active/ended)
-        comp_status_filter = st.selectbox(
-            "Competition Status",
-            options=['All', 'Active', 'Ended'],
-            index=0,
-            help="Filter competitions by their current status"
-        )
-    
-    with col_filter2:
-        # Date range filter
-        default_start = today - datetime.timedelta(days=365)  # 1 year ago
-        default_end = today + datetime.timedelta(days=180)    # 6 months ahead
-        
-        date_range_start = st.date_input(
-            "From Date",
-            value=default_start,
-            help="Show competitions starting from this date"
-        )
-        
-    with col_filter3:
-        date_range_end = st.date_input(
-            "To Date",
-            value=default_end,
-            help="Show competitions ending before this date"
-        )
-    
-    # Apply filters to competitions
-    filtered_competitions = []
-    for c in competitions:
-        comp_start = _parse_date(c['start_date'])
-        comp_end = _parse_date(c['end_date'])
-        
-        # Apply status filter
-        if comp_status_filter == 'Active' and today > comp_end:
-            continue
-        if comp_status_filter == 'Ended' and today <= comp_end:
-            continue
-        
-        # Apply date range filter
-        if comp_end < date_range_start or comp_start > date_range_end:
-            continue
-        
-        filtered_competitions.append(c)
-    
-    if not filtered_competitions:
-        st.info("No competitions match the selected filters.")
-        return
-    
-    # comp_options = [f"{c['id']}: {c['name']} ({_format_date_for_ui(_parse_date(c['start_date']))} - {_format_date_for_ui(_parse_date(c['end_date']))})" for c in filtered_competitions]
-    comp_options = [f"{c['id']}: {c['name']}" for c in filtered_competitions]
-    selected = st.multiselect(
-        "Select competitions to review",
-        options=comp_options,
-        default=comp_options
-    )
-    
-    # Round filter
+    # =================================================
+    # FILTERS UI (3 Columns)
+    # =================================================
+    # Fetch round names for filter
     all_rounds = fetch_all("SELECT DISTINCT round_name FROM round ORDER BY round_name")
     round_names = [r['round_name'] for r in all_rounds]
     
-    selected_rounds = st.multiselect(
-        "Filter by Round (optional)",
-        options=round_names,
-        default=[],
-        help="Leave empty to show all rounds"
-    )
+    col_f1, col_f2, col_f3 = st.columns(3)
     
-    if not selected:
-        st.info("Select at least one competition to proceed.")
-        return
-    
-    # Fetch sessions based on selection
-    sessions = []
+    with col_f1:
+        # (1) Status Filter (Session Status)
+        selected_statuses = st.multiselect(
+            "Status",
+            options=['Preliminary', 'Final', 'Confirmed'],
+            default=['Preliminary', 'Final', 'Confirmed'],
+            help="Filter by score status"
+        )
+        
+    with col_f2:
+        # (2) Date Range Filter
+        default_start = today - datetime.timedelta(days=365)
+        default_end = today + datetime.timedelta(days=180)
+        
+        date_range = st.date_input(
+            "Date Range",
+            value=(default_start, default_end),
+            help="Filter by shoot date"
+        )
+        
+        # Handle date range logic safely
+        start_date = default_start
+        end_date = default_end
+        
+        if isinstance(date_range, (list, tuple)):
+            if len(date_range) == 2:
+                start_date, end_date = date_range
+            elif len(date_range) == 1:
+                start_date = date_range[0]
+                end_date = date_range[0]
+        elif isinstance(date_range, datetime.date):
+            start_date = date_range
+            end_date = date_range
 
-    if selected:
-        selected_ids = [int(s.split(":", 1)[0]) for s in selected]
+    with col_f3:
+        # (3) Round Filter
+        selected_rounds = st.multiselect(
+            "Rounds",
+            options=round_names,
+            default=[],
+            help="Leave empty to show all rounds"
+        )
 
-        # Build round filter condition
-        round_filter_sql = ""
-        round_params = {}
-        if selected_rounds:
-            round_filter_sql = "AND r.round_name IN :round_names"
-            round_params = {'round_names': tuple(selected_rounds)}        
-        # Load sessions that are entered into the selected competitions
-        comp_sessions = fetch_all(f"""
-            SELECT s.id AS session_id, s.member_id, s.round_id,
-                   DATE_FORMAT(s.shoot_date, '%Y-%m-%d') AS shoot_date,
-                   s.status, ce.competition_id, c.name AS competition_name,
-                   DATE_FORMAT(c.end_date, '%Y-%m-%d') AS comp_end_date,
-                   r.round_name, cm.full_name AS member_name, cm.av_number
-            FROM session s
-            JOIN competition_entry ce ON ce.session_id = s.id
-            JOIN competition c ON c.id = ce.competition_id
-            JOIN round r ON r.id = s.round_id
-            JOIN club_member cm ON cm.id = s.member_id
-            WHERE ce.competition_id IN :ids {round_filter_sql}
-            ORDER BY c.name, s.shoot_date, cm.full_name
-        """, params={'ids': tuple(selected_ids), **round_params})
-        sessions.extend(comp_sessions)
+    # =================================================
+    # DATA FETCHING
+    # =================================================
     
-    if not sessions:
-        st.info("No sessions found for the selected competitions.")
+    # FIX: Explicitly type the params dict to prevent "type 'date' not assignable to 'int'" error
+    params: Dict[str, Any] = {'mid': member_id}
+    
+    query = """
+        SELECT s.id AS session_id, s.member_id, s.round_id,
+               s.shoot_date,
+               s.status, ce.competition_id, c.name AS competition_name,
+               c.end_date AS comp_end_date,
+               r.round_name, cm.full_name AS member_name, cm.av_number
+        FROM session s
+        JOIN competition_entry ce ON ce.session_id = s.id
+        JOIN competition c ON c.id = ce.competition_id
+        JOIN round r ON r.id = s.round_id
+        JOIN club_member cm ON cm.id = s.member_id
+        WHERE s.member_id = :mid
+    """
+    
+    # Apply Status Filter
+    if selected_statuses:
+        query += " AND s.status IN :statuses"
+        params['statuses'] = tuple(selected_statuses)
+    else:
+        st.info("Please select at least one status.")
         return
+
+    # Apply Date Filter
+    query += " AND s.shoot_date BETWEEN :start_date AND :end_date"
+    params['start_date'] = start_date
+    params['end_date'] = end_date
     
-    # Convert RowMapping objects to dicts and ensure AV numbers are properly set
-    sessions = [dict(s) for s in sessions]    
-    # Group by competition
-    sessions_by_comp: Dict[str, List[Dict]] = {}
+    # Apply Round Filter
+    if selected_rounds:
+        query += " AND r.round_name IN :rounds"
+        params['rounds'] = tuple(selected_rounds)
+        
+    query += " ORDER BY c.end_date DESC, c.name, s.shoot_date"
+    
+    sessions_data = fetch_all(query, params=params)
+    
+    if not sessions_data:
+        st.info("No scores found matching your filters.")
+        return
+
+    # Convert to dict list
+    sessions = [dict(s) for s in sessions_data]
+    
+    # Group by Competition
+    sessions_by_comp: Dict[int, List[Dict]] = {}
+    comp_info: Dict[int, Dict] = {}
+    
     for s in sessions:
         comp_key = s['competition_id']
         sessions_by_comp.setdefault(comp_key, []).append(s)
+        comp_info[comp_key] = {
+            'name': s['competition_name'],
+            'end_date': s['comp_end_date']
+        }
 
-    # Create tabs for competitions
+    # =================================================
+    # RENDER TABS
+    # =================================================
+    
     active_comp_ids = sorted(list(sessions_by_comp.keys()), reverse=True)
-    tab_labels = []
-    for cid in active_comp_ids:
-        comp = next((c for c in filtered_competitions if c['id'] == cid), None)
-        tab_labels.append(comp['name'] if comp else f"Comp {cid}")
-
+    
+    tab_labels = [comp_info[cid]['name'] for cid in active_comp_ids]
     tabs = st.tabs(tab_labels)
 
     for i, comp_key in enumerate(active_comp_ids):
         with tabs[i]:
             sess_list = sessions_by_comp[comp_key]
-            comp = next((c for c in filtered_competitions if c['id'] == comp_key), None)
-            comp_end = _parse_date(comp['end_date']) if comp else _today_date()
-            # Header info
+            c_info = comp_info[comp_key]
+            
+            comp_end = c_info['end_date']
+            if isinstance(comp_end, str):
+                comp_end = _parse_date(comp_end)
+            elif not isinstance(comp_end, datetime.date):
+                comp_end = _today_date()
+
             st.caption(f"Ends: {_format_date_for_ui(comp_end)}")
             
             if HAS_AGGRID and sess_list:
@@ -412,10 +424,14 @@ def show_score_history():
                 rows = []
                 for s in sess_list:
                     total = _compute_session_total(s['session_id'])
+                    s_date_display = s['shoot_date']
+                    if not isinstance(s_date_display, str):
+                         s_date_display = _format_date_for_ui(s_date_display)
+                         
                     rows.append({
                         'session_id': s['session_id'],
                         'round': s['round_name'],
-                        'shoot_date': _format_date_for_ui(_parse_date(s['shoot_date'])),
+                        'shoot_date': s_date_display,
                         'status': s['status'],
                         'total': total,
                     })
@@ -443,7 +459,6 @@ def show_score_history():
                     key=f"aggrid_history_{comp_key}"
                 )
                 
-                # Handle Selection Immediately
                 selected = grid_response.get('selected_rows', [])
                 if isinstance(selected, pd.DataFrame):
                     selected = selected.to_dict('records')
@@ -456,7 +471,6 @@ def show_score_history():
                     
                     if selected_session:
                         st.markdown("---")
-                        # Render Editor Immediately
-                        _render_score_editor(selected_session, comp_end)
+                        _render_score_editor(selected_session, comp_end, key_suffix=f"_c{comp_key}")
             else:
                 st.info("AgGrid not available. Please install streamlit-aggrid.")
