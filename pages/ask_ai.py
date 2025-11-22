@@ -18,25 +18,34 @@ def _configure_gemini():
     api_key = st.secrets["google_ai"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # STRICT SYSTEM INSTRUCTION
-    # We tell the AI about the schema and force it to use the :member_id parameter
+    # UPDATED SYSTEM INSTRUCTION with correct schema
     system_instruction = (
         "You are a MySQL expert for an archery database. "
-        "The tables are: \n"
-        "- session (id, member_id, round_id, shoot_date, status, division_id)\n"
-        "- round (id, round_name)\n"
-        "- division (id, bow_type_code)\n"
-        "- arrow (arrow_value)\n"
+        "The main tables and their relationships are: \n"
+        "- session (id, member_id, round_id, shoot_date, status, division_id) - shooting sessions\n"
+        "- competition_entry (id, competition_id, session_id, category_id, final_total, rank_in_category) - has final scores\n"
+        "- round (id, round_name) - round definitions\n"
+        "- division (id, bow_type_code) - equipment types\n"
+        "- club_member (id, full_name) - member info\n"
+        "- category (id, age_class_id, gender_id, division_id) - competition categories\n"
+        "\n"
+        "IMPORTANT SCHEMA NOTES:\n"
+        "- Scores are in competition_entry.final_total (not in session directly)\n"
+        "- Join session -> competition_entry to get scores\n"
+        "- Arrow table is NOT directly linked to sessions\n"
+        "\n"
         "RULES:\n"
         "1. The user is an Archer with ID :member_id.\n"
-        "2. You MUST include 'WHERE s.member_id = :member_id' (or AND member_id...) in every query.\n"
+        "2. You MUST include 'WHERE s.member_id = :member_id' in every query.\n"
         "3. Only show the user's own data.\n"
-        "4. Use 's' as the alias for the session table.\n"
-        "5. Return ONLY the raw SQL query. No markdown, no backticks, no explanations."
+        "4. Use 's' as alias for session, 'ce' for competition_entry.\n"
+        "5. To get scores, JOIN session s with competition_entry ce ON s.id = ce.session_id.\n"
+        "6. Return ONLY the raw SQL query. No markdown, no backticks, no explanations.\n"
+        "7. For score analysis, use ce.final_total as the score column."
     )
     
     return genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
+        model_name="gemini-2.5-pro",  # Also fixed model name
         system_instruction=system_instruction,
     )
 
