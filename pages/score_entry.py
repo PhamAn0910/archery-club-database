@@ -86,7 +86,7 @@ def _list_active_competitions() -> List[Dict[str, Any]]:
                DATE_FORMAT(start_date, :fmt) AS start_fmt,
                DATE_FORMAT(end_date, :fmt) AS end_fmt
         FROM competition
-        WHERE end_date >= CURDATE() - INTERVAL 30 DAY
+        WHERE end_date >= CURDATE()
         ORDER BY end_date DESC
         """,
         {"fmt": DATE_FORMAT_DB},
@@ -393,6 +393,15 @@ def _score_from_value(value: str | None) -> int:
         return int(token)
     except ValueError:
         return 0
+
+
+def _update_competition_final_total(session_id: int) -> None:
+    """Calculate and update the final_total in competition_entry for a session."""
+    total_score = _compute_session_total(session_id)
+    exec_sql(
+        "UPDATE competition_entry SET final_total = :total WHERE session_id = :sid",
+        {"total": total_score, "sid": session_id}
+    )
 
 @require_archer
 def show_score_entry():
@@ -731,6 +740,7 @@ def _nav_callback(
 
     elif direction == "submit":
         exec_sql("UPDATE session SET status = 'Final' WHERE id = :sid", {"sid": session_id})
+        _update_competition_final_total(session_id)
         st.session_state.score_entry_resume_notice = "Session submitted for review!"
 
 
